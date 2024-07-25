@@ -2,8 +2,9 @@ import torch
 import pytorch_lightning as pl
 from pathlib import Path
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from ORDNA.data.barlow_twins_datamodule import BarlowTwinsDataModule
+from ORDNA.data.habitat_datamodule import HabitatDataModule  # Import the new HabitatDataModule
 from ORDNA.models.classifier import Classifier
 from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.argparser import get_args, write_config_file
@@ -43,6 +44,10 @@ datamodule = BarlowTwinsDataModule(samples_dir=samples_dir,
                                    sample_subset_size=args.sample_subset_size,
                                    batch_size=args.batch_size)
 
+print("Initializing habitat data module...")
+habitat_datamodule = HabitatDataModule(labels_file=Path(args.labels_file).resolve(), batch_size=args.batch_size)
+habitat_datamodule.setup(stage='fit')
+
 print("Setting up data module...")
 datamodule.setup(stage='fit')  # Ensure train_dataset is defined
 
@@ -57,9 +62,11 @@ barlow_twins_model = SelfAttentionBarlowTwinsEmbedder.load_from_checkpoint("chec
 print("Initializing classifier model...")
 # Crea il classificatore con il modello Barlow Twins congelato
 sample_emb_dim = args.sample_emb_dim  # Assicurati che questo sia corretto
+habitat_dim = habitat_datamodule.habitats.shape[1]  # Dimensione della codifica one-hot dell'habitat
 model = Classifier(barlow_twins_model=barlow_twins_model, 
                    sample_emb_dim=sample_emb_dim, 
-                   num_classes=args.num_classes, 
+                   num_classes=args.num_classes,
+                   habitat_dim=habitat_dim,
                    initial_learning_rate=args.initial_learning_rate,
                    class_weights=class_weights)
 
@@ -139,10 +146,10 @@ class ValidationOnStepCallback(pl.Callback):
             total = 0
             with torch.no_grad():
                 for batch in val_dataloader:
-                    sample_subset1, sample_subset2, labels = batch
-                    sample_subset1, sample_subset2, labels = sample_subset1.to(pl_module.device), sample_subset2.to(pl_module.device), labels.to(pl_module.device)
-                    output1 = pl_module(sample_subset1)
-                    output2 = pl_module(sample_subset2)
+                    sample_subset1, sample_subset2, habitat, labels = batch
+                    sample_subset1, sample_subset2, habitat, labels = sample_subset1.to(pl_module.device), sample_subset2.to(pl_module.device), habitat.to(pl_module.device), labels.to(pl_module.device)
+                    output1 = pl_module(sample_subset1, habitat)
+                    output2 = pl_module(sample_subset2, habitat)
                     val_class_loss += pl_module.loss_fn(output1, labels).item()
                     val_class_loss += pl_module.loss_fn(output2, labels).item()
                     _, pred1 = torch.max(output1, 1)
@@ -153,8 +160,6 @@ class ValidationOnStepCallback(pl.Callback):
             val_class_loss /= len(val_dataloader)
             val_accuracy = correct / total
             print(f"[DEBUG] Validation at step {current_step}: val_class_loss = {val_class_loss}, val_accuracy = {val_accuracy}")
-            pl_module.log('val_class_loss', val_class_loss, prog_bar=True, logger=True)
-            pl_module.log('val_accuracy', val_accuracy, prog_bar=True, logger=True)
             pl_module.train()
 
 print("Setting up Wandb logger...")
