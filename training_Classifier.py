@@ -113,10 +113,10 @@ def main():
     model = Classifier(
         sample_emb_dim=sample_emb_dim,
         num_classes=args.num_classes,
-        num_habitats=habitat_dim,
         initial_learning_rate=args.initial_learning_rate,
         class_weights=class_weights
     )
+    model.hparams.num_habitats = habitat_dim
 
     print("Setting up checkpoint directory...")
     checkpoint_dir = Path('checkpoints_classifier')
