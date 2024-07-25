@@ -29,18 +29,16 @@ class OrdinalCrossEntropyLoss(nn.Module):
         return loss.mean()
 
 class Classifier(pl.LightningModule):
-    def __init__(self, barlow_twins_model: SelfAttentionBarlowTwinsEmbedder, sample_emb_dim: int, num_classes: int, habitat_dim: int, initial_learning_rate: float = 1e-5, class_weights=None):
+    def __init__(self, barlow_twins_model: SelfAttentionBarlowTwinsEmbedder, sample_emb_dim: int, habitat_emb_dim: int, num_classes: int, initial_learning_rate: float = 1e-5, class_weights=None):
         super().__init__()
         self.save_hyperparameters(ignore=['barlow_twins_model'])
         self.barlow_twins_model = barlow_twins_model.eval()
         self.num_classes = num_classes
-        self.habitat_dim = habitat_dim
         for param in self.barlow_twins_model.parameters():
             param.requires_grad = False
         
-        # Update input dimension to include habitat information
         self.classifier = nn.Sequential(
-            nn.Linear(sample_emb_dim + habitat_dim, 256),
+            nn.Linear(sample_emb_dim + habitat_emb_dim, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -60,8 +58,8 @@ class Classifier(pl.LightningModule):
 
     def forward(self, x: torch.Tensor, habitat: torch.Tensor) -> torch.Tensor:
         sample_emb = self.barlow_twins_model(x.to(self.device))  # Utilizza l'output completo del modello Barlow Twins
-        combined_input = torch.cat((sample_emb, habitat.to(self.device)), dim=1)
-        return self.classifier(combined_input)
+        combined_emb = torch.cat((sample_emb, habitat.to(self.device)), dim=1)
+        return self.classifier(combined_emb)
 
     def training_step(self, batch, batch_idx: int) -> torch.Tensor:
         sample_subset1, sample_subset2, habitat, labels = batch
@@ -89,12 +87,14 @@ class Classifier(pl.LightningModule):
         output2 = self(sample_subset2, habitat)
         class_loss = self.loss_fn(output1, labels) + self.loss_fn(output2, labels)
         self.log('val_class_loss', class_loss)  # Log without specifying on_step or on_epoch
+        self.log('val_class_loss_step', class_loss)  # Log on step specifically
         pred1 = torch.argmax(output1, dim=1)
         pred2 = torch.argmax(output2, dim=1)
         combined_preds = torch.cat((pred1, pred2), dim=0)
         combined_labels = torch.cat((labels, labels), dim=0)
         accuracy = self.val_accuracy(combined_preds, combined_labels)
         self.log('val_accuracy', accuracy)
+        self.log('val_accuracy_step', accuracy)  # Log on step specifically
         precision = self.val_precision(combined_preds, combined_labels)
         self.log('val_precision', precision)
         recall = self.val_recall(combined_preds, combined_labels)
@@ -105,6 +105,6 @@ class Classifier(pl.LightningModule):
         optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
         scheduler = {
             'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
-            'monitor': 'val_class_loss'
+            'monitor': 'val_class_loss_step'
         }
         return [optimizer], [scheduler]
