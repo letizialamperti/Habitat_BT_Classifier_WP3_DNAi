@@ -9,8 +9,8 @@ import wandb
 from pathlib import Path
 
 # Funzione per calcolare i pesi delle classi
-def calculate_class_weights_from_csv(labels_file: Path, num_classes: int) -> torch.Tensor:
-    labels_df = pd.read_csv(labels_file)
+def calculate_class_weights_from_csv(protection_file: Path, num_classes: int) -> torch.Tensor:
+    labels_df = pd.read_csv(protection_file)
     label_counts = labels_df['protection'].value_counts().sort_index()
     class_weights = 1.0 / label_counts
     class_weights = class_weights / class_weights.sum() * num_classes  # Normalize weights
@@ -97,7 +97,7 @@ def main():
 
     datamodule = MergedDataModule(
         embeddings_file=args.embeddings_file,
-        protection_file=args.labels_file,
+        protection_file=args.protection_file,
         habitat_file=args.habitat_file,
         batch_size=args.batch_size
     )
@@ -106,7 +106,7 @@ def main():
     sample_emb_dim = datamodule.sample_emb_dim  # Dimensione degli embeddings
     habitat_dim = datamodule.num_habitats  # Dimensione della codifica one-hot degli habitat
 
-    class_weights = calculate_class_weights_from_csv(Path(args.labels_file), args.num_classes)
+    class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
 
     model = Classifier(
         sample_emb_dim=sample_emb_dim,
