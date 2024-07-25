@@ -1,6 +1,7 @@
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+import pytorch_lightning as pl
 
 class MergedDataset(Dataset):
     def __init__(self, embeddings_file: str, protection_file: str, habitat_file: str):
