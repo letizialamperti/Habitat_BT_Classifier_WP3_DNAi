@@ -1,21 +1,49 @@
 import torch
 import pytorch_lightning as pl
-from pathlib import Path
-from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
 from merged_dataset import MergedDataModule
 from ORDNA.models.classifier import Classifier
 from ORDNA.utils.argparser import get_args, write_config_file
 import wandb
+from pathlib import Path
 
 # Funzione per calcolare i pesi delle classi
 def calculate_class_weights_from_csv(labels_file: Path, num_classes: int) -> torch.Tensor:
-    import pandas as pd
-    labels = pd.read_csv(labels_file)
-    label_counts = labels['protection'].value_counts().sort_index()
+    labels_df = pd.read_csv(labels_file)
+    label_counts = labels_df['protection'].value_counts().sort_index()
     class_weights = 1.0 / label_counts
     class_weights = class_weights / class_weights.sum() * num_classes  # Normalize weights
     return torch.tensor(class_weights.values, dtype=torch.float)
+
+# Callback for validation on each step
+class ValidationOnStepCallback(pl.Callback):
+    def __init__(self, n_steps):
+        super().__init__()
+        self.n_steps = n_steps
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        current_step = trainer.global_step + 1
+        if current_step % self.n_steps == 0:
+            print(f"[DEBUG] Running validation at step {current_step}")
+            pl_module.eval()
+            val_dataloader = trainer.datamodule.val_dataloader()
+            val_class_loss = 0.0
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for batch in val_dataloader:
+                    embeddings, habitats, labels = batch
+                    combined_input = torch.cat((embeddings, habitats), dim=1)
+                    output = pl_module(combined_input)
+                    val_class_loss += pl_module.loss_fn(output, labels).item()
+                    _, pred = torch.max(output, 1)
+                    correct += (pred == labels).sum().item()
+                    total += labels.size(0)
+            val_class_loss /= len(val_dataloader)
+            val_accuracy = correct / total
+            print(f"[DEBUG] Validation at step {current_step}: val_class_loss = {val_class_loss}, val_accuracy = {val_accuracy}")
+            pl_module.train()
 
 class CustomEarlyStopping(pl.Callback):
     def __init__(self, monitor: str, patience: int, mode: str = 'min', min_delta: float = 0.0):
@@ -59,101 +87,69 @@ class CustomEarlyStopping(pl.Callback):
             trainer.should_stop = True
             trainer.train_loop.run = False  # Stops training immediately
 
-class ValidationOnStepCallback(pl.Callback):
-    def __init__(self, n_steps):
-        super().__init__()
-        self.n_steps = n_steps
-
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        current_step = trainer.global_step + 1
-        if current_step % self.n_steps == 0:
-            print(f"[DEBUG] Running validation at step {current_step}")
-            # Esegui manualmente la validazione
-            pl_module.eval()
-            val_dataloader = trainer.datamodule.val_dataloader()
-            val_class_loss = 0.0
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for batch in val_dataloader:
-                    embeddings, habitats, labels = batch
-                    combined_input = torch.cat((embeddings, habitats), dim=1)
-                    output = pl_module(combined_input)
-                    val_class_loss += pl_module.loss_fn(output, labels).item()
-                    _, pred = torch.max(output, 1)
-                    correct += (pred == labels).sum().item()
-                    total += labels.size(0)
-            val_class_loss /= len(val_dataloader)
-            val_accuracy = correct / total
-            print(f"[DEBUG] Validation at step {current_step}: val_class_loss = {val_class_loss}, val_accuracy = {val_accuracy}")
-            pl_module.train()
-
 def main():
-    # Usa la stessa configurazione
     args = get_args()
     if args.arg_log:
         write_config_file(args)
 
-    print("Setting random seed...")
+    print(f"[rank: {0}] Seed set to {args.seed}")
     pl.seed_everything(args.seed)
 
-    print("Initializing data module...")
     datamodule = MergedDataModule(
         embeddings_file=args.embeddings_file,
-        protection_file=args.protection_file,
+        protection_file=args.labels_file,
         habitat_file=args.habitat_file,
         batch_size=args.batch_size
     )
-    datamodule.setup(stage='fit')
+    datamodule.setup()
 
-    print("Initializing classifier model...")
-    sample_emb_dim = datamodule.sample_emb_dim
-    habitat_dim = datamodule.num_habitats  # Usa num_habitats anziché habitat_dim
-    class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
+    sample_emb_dim = datamodule.sample_emb_dim  # Dimensione degli embeddings
+    habitat_dim = datamodule.num_habitats  # Dimensione della codifica one-hot degli habitat
+
+    class_weights = calculate_class_weights_from_csv(Path(args.labels_file), args.num_classes)
+
     model = Classifier(
-        sample_emb_dim=sample_emb_dim,  # Usa sample_emb_dim senza habitat_dim
+        sample_emb_dim=sample_emb_dim,
         num_classes=args.num_classes,
-        num_habitats=habitat_dim,  # Passa num_habitats direttamente
+        habitat_dim=habitat_dim,
         initial_learning_rate=args.initial_learning_rate,
         class_weights=class_weights
     )
 
-    print("Setting up checkpoint directory...")
-    checkpoint_dir = Path('checkpoints_classifier')
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-    print("Initializing checkpoint callback...")
     checkpoint_callback = ModelCheckpoint(
         monitor='val_accuracy',
-        dirpath=checkpoint_dir,
+        dirpath='checkpoints_classifier',
         filename='classifier-{epoch:02d}-{val_accuracy:.2f}',
         save_top_k=3,
         mode='max',
     )
 
-    # Parametri del dataset e batch size
-    N = len(datamodule.train_dataloader().dataset)
-    B = args.batch_size
+    early_stopping_callback = CustomEarlyStopping(
+        monitor='val_accuracy',
+        patience=5,
+        mode='max'
+    )
+
+    wandb_logger = WandbLogger(project='ORDNA_Class_july', save_dir="lightning_logs", config=args, log_model=False)
+    wandb_run = wandb.init(project='ORDNA_Class_july', config=args)
+    print(f"Wandb run URL: {wandb_run.url}")
+
+    # Calcolare il numero totale di batch per epoca
+    N = len(datamodule.train_dataloader().dataset)  # Numero di campioni di addestramento
+    B = args.batch_size  # Batch size
     num_batches_per_epoch = N // B
     n_steps = num_batches_per_epoch // 10
 
-    print("Setting up Wandb logger...")
-    wandb_logger = WandbLogger(project='ORDNA_Class_habitat', save_dir=Path("lightning_logs"), config=args, log_model=False)
-
-    print("Initializing trainer...")
     trainer = pl.Trainer(
-        accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+        accelerator=args.accelerator,
         max_epochs=args.max_epochs,
         logger=wandb_logger,
-        callbacks=[checkpoint_callback, ValidationOnStepCallback(n_steps=n_steps), CustomEarlyStopping(monitor='val_accuracy', patience=3, mode='max')],
+        callbacks=[checkpoint_callback, early_stopping_callback, ValidationOnStepCallback(n_steps=n_steps)],
         log_every_n_steps=10,
-        detect_anomaly=False
     )
 
     print("Starting training...")
     trainer.fit(model=model, datamodule=datamodule)
-
-    print("Finishing Wandb run...")
     wandb.finish()
 
 if __name__ == '__main__':
