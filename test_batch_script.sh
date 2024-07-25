@@ -20,6 +20,6 @@ module load cray-python
 
 # Command to run the Python script
 echo "Starting the training process."
-srun -ul $HOME/miniconda3/envs/diaus_1/bin/python test_classifier.py  
+srun -ul $HOME/miniconda3/envs/diaus_1/bin/python BT_average_representation.py
 
-echo "Visualizing script completed successfully."
+echo "BT_average_representation script completed successfully."
