@@ -2,14 +2,14 @@ import torch
 import pytorch_lightning as pl
 from pathlib import Path
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from merged_dataset import MergedDataModule
 from ORDNA.models.classifier import Classifier
 from ORDNA.utils.argparser import get_args, write_config_file
 import wandb
 
 # Funzione per calcolare i pesi delle classi
-def calculate_class_weights(labels_file: Path, num_classes: int) -> torch.Tensor:
+def calculate_class_weights_from_csv(labels_file: Path, num_classes: int) -> torch.Tensor:
     import pandas as pd
     labels = pd.read_csv(labels_file)
     label_counts = labels['protection'].value_counts().sort_index()
@@ -17,7 +17,6 @@ def calculate_class_weights(labels_file: Path, num_classes: int) -> torch.Tensor
     class_weights = class_weights / class_weights.sum() * num_classes  # Normalize weights
     return torch.tensor(class_weights.values, dtype=torch.float)
 
-# Custom Early stopping callback
 class CustomEarlyStopping(pl.Callback):
     def __init__(self, monitor: str, patience: int, mode: str = 'min', min_delta: float = 0.0):
         super().__init__()
@@ -60,7 +59,6 @@ class CustomEarlyStopping(pl.Callback):
             trainer.should_stop = True
             trainer.train_loop.run = False  # Stops training immediately
 
-# Callback for validation on each step
 class ValidationOnStepCallback(pl.Callback):
     def __init__(self, n_steps):
         super().__init__()
@@ -79,7 +77,6 @@ class ValidationOnStepCallback(pl.Callback):
             with torch.no_grad():
                 for batch in val_dataloader:
                     embeddings, habitats, labels = batch
-                    embeddings, habitats, labels = embeddings.to(pl_module.device), habitats.to(pl_module.device), labels.to(pl_module.device)
                     combined_input = torch.cat((embeddings, habitats), dim=1)
                     output = pl_module(combined_input)
                     val_class_loss += pl_module.loss_fn(output, labels).item()
@@ -92,7 +89,7 @@ class ValidationOnStepCallback(pl.Callback):
             pl_module.train()
 
 def main():
-    # Parsing arguments
+    # Usa la stessa configurazione
     args = get_args()
     if args.arg_log:
         write_config_file(args)
@@ -100,26 +97,26 @@ def main():
     print("Setting random seed...")
     pl.seed_everything(args.seed)
 
-    print("Setting up data module...")
+    print("Initializing data module...")
     datamodule = MergedDataModule(
         embeddings_file=args.embeddings_file,
         protection_file=args.protection_file,
         habitat_file=args.habitat_file,
         batch_size=args.batch_size
     )
-
-
-    datamodule.setup()  # Assicuriamoci che il datamodule sia configurato correttamente
-
-
-    print("Calculating class weights from CSV...")
-    class_weights = calculate_class_weights(Path(args.protection_file).resolve(), args.num_classes)
-    print(f"Class weights: {class_weights}")
+    datamodule.setup(stage='fit')
 
     print("Initializing classifier model...")
-    sample_emb_dim = datamodule.dataset.embeddings.shape[1]  # Dimensione degli embeddings
-    habitat_dim = datamodule.dataset.habitats.shape[1]  # Dimensione dell'habitats
-    model = Classifier(sample_emb_dim=sample_emb_dim, num_classes=args.num_classes, num_habitats=habitat_dim, initial_learning_rate=args.initial_learning_rate, class_weights=class_weights)
+    sample_emb_dim = datamodule.dataset.embeddings.shape[1]
+    habitat_dim = datamodule.dataset.habitats.shape[1]
+    class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
+    model = Classifier(
+        sample_emb_dim=sample_emb_dim,
+        num_classes=args.num_classes,
+        num_habitats=habitat_dim,
+        initial_learning_rate=args.initial_learning_rate,
+        class_weights=class_weights
+    )
 
     print("Setting up checkpoint directory...")
     checkpoint_dir = Path('checkpoints_classifier')
@@ -134,29 +131,21 @@ def main():
         mode='max',
     )
 
+    # Parametri del dataset e batch size
+    N = len(datamodule.train_dataloader().dataset)
+    B = args.batch_size
+    num_batches_per_epoch = N // B
+    n_steps = num_batches_per_epoch // 10
+
     print("Setting up Wandb logger...")
-    wandb_logger = WandbLogger(project='ORDNA_Class_july', save_dir=Path("lightning_logs"), config=args, log_model=False)
-
-    print("Initializing Wandb run...")
-    wandb_run = wandb.init(project='ORDNA_Class_july', config=args)
-
-    print(f"Wandb run URL: {wandb_run.url}")
+    wandb_logger = WandbLogger(project='ORDNA_Class_habitat', save_dir=Path("lightning_logs"), config=args, log_model=False)
 
     print("Initializing trainer...")
-    num_batches_per_epoch = len(datamodule.train_dataloader())
-    print(f"Number of batches per epoch: {num_batches_per_epoch}")
-
-    n_steps = num_batches_per_epoch // 10
-    print(f"Validation will run every {n_steps} steps")
-
-    validation_callback = ValidationOnStepCallback(n_steps=n_steps)
-    early_stopping_callback = CustomEarlyStopping(monitor='val_accuracy', patience=3, mode='max')
-
     trainer = pl.Trainer(
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         max_epochs=args.max_epochs,
         logger=wandb_logger,
-        callbacks=[checkpoint_callback, validation_callback, early_stopping_callback],
+        callbacks=[checkpoint_callback, ValidationOnStepCallback(n_steps=n_steps), CustomEarlyStopping(monitor='val_accuracy', patience=3, mode='max')],
         log_every_n_steps=10,
         detect_anomaly=False
     )
@@ -164,12 +153,8 @@ def main():
     print("Starting training...")
     trainer.fit(model=model, datamodule=datamodule)
 
-    if any(callback.stop_training for callback in trainer.callbacks if isinstance(callback, CustomEarlyStopping)):
-        stopped_epoch = next(callback.stopped_epoch for callback in trainer.callbacks if isinstance(callback, CustomEarlyStopping))
-        print(f"Early stopping was triggered at epoch {stopped_epoch}.")
-
     print("Finishing Wandb run...")
     wandb.finish()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
