@@ -6,6 +6,7 @@ from merged_dataset import MergedDataModule
 from ORDNA.models.classifier import Classifier
 from ORDNA.utils.argparser import get_args, write_config_file
 import wandb
+import pandas as pd
 from pathlib import Path
 
 # Funzione per calcolare i pesi delle classi
