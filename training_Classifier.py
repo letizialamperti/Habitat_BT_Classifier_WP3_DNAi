@@ -79,7 +79,8 @@ class ValidationOnStepCallback(pl.Callback):
             with torch.no_grad():
                 for batch in val_dataloader:
                     embeddings, habitats, labels = batch
-                    combined_input = torch.cat((embeddings, habitats), dim=1).to(pl_module.device)
+                    embeddings, habitats, labels = embeddings.to(pl_module.device), habitats.to(pl_module.device), labels.to(pl_module.device)
+                    combined_input = torch.cat((embeddings, habitats), dim=1)
                     output = pl_module(combined_input)
                     val_class_loss += pl_module.loss_fn(output, labels).item()
                     _, pred = torch.max(output, 1)
@@ -90,88 +91,81 @@ class ValidationOnStepCallback(pl.Callback):
             print(f"[DEBUG] Validation at step {current_step}: val_class_loss = {val_class_loss}, val_accuracy = {val_accuracy}")
             pl_module.train()
 
-# Controllo se la GPU è disponibile
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    print(f"GPU is available. Device: {torch.cuda.get_device_name(0)}")
-else:
-    device = torch.device("cpu")
-    print("GPU not available, using CPU.")
+def main():
+    # Parsing arguments
+    args = get_args()
+    if args.arg_log:
+        write_config_file(args)
 
-# Usa la stessa configurazione
-args = get_args()
-if args.arg_log:
-    write_config_file(args)
+    print("Setting random seed...")
+    pl.seed_everything(args.seed)
 
-print("Setting random seed...")
-pl.seed_everything(args.seed)
+    print("Setting up data module...")
+    datamodule = MergedDataModule(
+        embeddings_file=args.embeddings_file,
+        protection_file=args.protection_file,
+        habitat_file=args.habitat_file,
+        batch_size=args.batch_size
+    )
 
-embeddings_file = Path(args.embeddings_file).resolve()
-protection_file = Path(args.protection_file).resolve()
-habitat_file = Path(args.habitat_file).resolve()
+    print("Calculating class weights from CSV...")
+    class_weights = calculate_class_weights(Path(args.protection_file).resolve(), args.num_classes)
+    print(f"Class weights: {class_weights}")
 
-print("Calculating class weights...")
-class_weights = calculate_class_weights(protection_file, args.num_classes)
-print(f"Class weights: {class_weights}")
+    print("Initializing classifier model...")
+    sample_emb_dim = datamodule.dataset.embeddings.shape[1]  # Dimensione degli embeddings
+    habitat_dim = datamodule.dataset.habitats.shape[1]  # Dimensione dell'habitats
+    model = Classifier(sample_emb_dim=sample_emb_dim, num_classes=args.num_classes, num_habitats=habitat_dim, initial_learning_rate=args.initial_learning_rate, class_weights=class_weights)
 
-print("Initializing data module...")
-datamodule = MergedDataModule(embeddings_file, protection_file, habitat_file, args.batch_size)
+    print("Setting up checkpoint directory...")
+    checkpoint_dir = Path('checkpoints_classifier')
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-print("Initializing classifier model...")
-sample_emb_dim = datamodule.dataset.embeddings.shape[1]
-habitat_dim = datamodule.dataset.habitats.shape[1]
-model = Classifier(sample_emb_dim=sample_emb_dim, habitat_dim=habitat_dim, num_classes=args.num_classes, initial_learning_rate=args.initial_learning_rate, class_weights=class_weights)
+    print("Initializing checkpoint callback...")
+    checkpoint_callback = ModelCheckpoint(
+        monitor='val_accuracy',
+        dirpath=checkpoint_dir,
+        filename='classifier-{epoch:02d}-{val_accuracy:.2f}',
+        save_top_k=3,
+        mode='max',
+    )
 
-print("Setting up checkpoint directory...")
-checkpoint_dir = Path('checkpoints_classifier')
-checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print("Setting up Wandb logger...")
+    wandb_logger = WandbLogger(project='ORDNA_Class_july', save_dir=Path("lightning_logs"), config=args, log_model=False)
 
-print("Initializing checkpoint callback...")
-checkpoint_callback = ModelCheckpoint(
-    monitor='val_accuracy',
-    dirpath=checkpoint_dir,
-    filename='classifier-{epoch:02d}-{val_accuracy:.2f}',
-    save_top_k=3,
-    mode='max',
-)
+    print("Initializing Wandb run...")
+    wandb_run = wandb.init(project='ORDNA_Class_july', config=args)
 
-print("Setting up Wandb logger...")
-wandb_logger = WandbLogger(project='ORDNA_Class_july', save_dir=Path("lightning_logs"), config=args, log_model=False)
+    print(f"Wandb run URL: {wandb_run.url}")
 
-# Inizializzazione Wandb
-print("Initializing Wandb run...")
-wandb_run = wandb.init(project='ORDNA_Class_july', config=args)
-print(f"Wandb run URL: {wandb_run.url}")
+    print("Initializing trainer...")
+    num_batches_per_epoch = len(datamodule.train_dataloader())
+    print(f"Number of batches per epoch: {num_batches_per_epoch}")
 
-print("Initializing trainer...")
+    n_steps = num_batches_per_epoch // 10
+    print(f"Validation will run every {n_steps} steps")
 
-# Parametri del dataset e batch size
-N = len(datamodule.train_dataloader().dataset)  # Numero di campioni di addestramento
-B = args.batch_size  # Batch size
+    validation_callback = ValidationOnStepCallback(n_steps=n_steps)
+    early_stopping_callback = CustomEarlyStopping(monitor='val_accuracy', patience=3, mode='max')
 
-# Calcolare il numero totale di batch per epoca
-num_batches_per_epoch = N // B
-print(f"Number of batches per epoch: {num_batches_per_epoch}")
+    trainer = pl.Trainer(
+        accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+        max_epochs=args.max_epochs,
+        logger=wandb_logger,
+        callbacks=[checkpoint_callback, validation_callback, early_stopping_callback],
+        log_every_n_steps=10,
+        detect_anomaly=False
+    )
 
-# Scegliere n_steps come il 20% dei batch per epoca
-n_steps = num_batches_per_epoch // 30
-print(f"Validation will run every {n_steps} steps")
+    print("Starting training...")
+    trainer.fit(model=model, datamodule=datamodule)
 
-# Inizializza i callback
-validation_callback = ValidationOnStepCallback(n_steps=n_steps)
-early_stopping_callback = CustomEarlyStopping(monitor='val_accuracy', patience=3, mode='max')
+    if any(callback.stop_training for callback in trainer.callbacks if isinstance(callback, CustomEarlyStopping)):
+        stopped_epoch = next(callback.stopped_epoch for callback in trainer.callbacks if isinstance(callback, CustomEarlyStopping))
+        print(f"Early stopping was triggered at epoch {stopped_epoch}.")
 
-trainer = pl.Trainer(
-    accelerator='gpu' if torch.cuda.is_available() else 'cpu',
-    max_epochs=args.max_epochs,
-    logger=wandb_logger,
-    callbacks=[checkpoint_callback, validation_callback, early_stopping_callback],
-    log_every_n_steps=10,
-    detect_anomaly=False
-)
+    print("Finishing Wandb run...")
+    wandb.finish()
 
-print("Starting training...")
-trainer.fit(model=model, datamodule=datamodule)
-
-print("Finishing Wandb run...")
-wandb.finish()
+if __name__ == "__main__":
+    main()
