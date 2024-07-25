@@ -5,7 +5,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from merged_dataset import MergedDataModule
 from ORDNA.models.classifier import Classifier
-from utils.argparser import get_args, write_config_file
+from ORDNA.utils.argparser import get_args, write_config_file
 import wandb
 
 # Funzione per calcolare i pesi delle classi
