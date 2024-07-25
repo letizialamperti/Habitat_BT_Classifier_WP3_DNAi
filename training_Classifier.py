@@ -139,7 +139,8 @@ def main():
     N = len(datamodule.train_dataloader().dataset)  # Numero di campioni di addestramento
     B = args.batch_size  # Batch size
     num_batches_per_epoch = N // B
-    n_steps = num_batches_per_epoch // 10
+    n_steps = max(1, num_batches_per_epoch // 30)
+    print(f"Validation will run every {n_steps} steps")
 
     trainer = pl.Trainer(
         accelerator=args.accelerator,
