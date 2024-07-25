@@ -108,6 +108,10 @@ def main():
         batch_size=args.batch_size
     )
 
+
+    datamodule.setup()  # Assicuriamoci che il datamodule sia configurato correttamente
+
+
     print("Calculating class weights from CSV...")
     class_weights = calculate_class_weights(Path(args.protection_file).resolve(), args.num_classes)
     print(f"Class weights: {class_weights}")
