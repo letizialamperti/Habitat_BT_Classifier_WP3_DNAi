@@ -8,6 +8,7 @@ from ORDNA.utils.argparser import get_args, write_config_file
 import wandb
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
+import argparse
 
 class MeanRepresentationDataset(torch.utils.data.Dataset):
     def __init__(self, embeddings_file: Path, protection_file: Path, habitat_file: Path):
@@ -44,6 +45,19 @@ class MeanRepresentationDataset(torch.utils.data.Dataset):
         label = torch.tensor(self.labels[idx], dtype=torch.long)
         return sample_embedding, habitat, label
 
+# Parsing arguments
+parser = argparse.ArgumentParser(description='Training Classifier')
+parser.add_argument('--embeddings_file', type=str, required=True, help='Path to the embeddings CSV file')
+parser.add_argument('--protection_file', type=str, required=True, help='Path to the protection labels CSV file')
+parser.add_argument('--habitat_file', type=str, required=True, help='Path to the habitat labels CSV file')
+parser.add_argument('--arg_log', type=bool, default=False, help='Log arguments')
+parser.add_argument('--seed', type=int, default=42, help='Random seed')
+parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+parser.add_argument('--num_classes', type=int, required=True, help='Number of classes')
+parser.add_argument('--initial_learning_rate', type=float, default=1e-3, help='Initial learning rate')
+parser.add_argument('--max_epochs', type=int, default=2, help='Max epochs')
+args = parser.parse_args()
+
 # Controllo se la GPU è disponibile
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -52,8 +66,6 @@ else:
     device = torch.device("cpu")
     print("GPU not available, using CPU.")
 
-# Usa la stessa configurazione
-args = get_args()
 if args.arg_log:
     write_config_file(args)
 
@@ -153,12 +165,11 @@ class ValidationOnStepCallback(pl.Callback):
             print(f"[DEBUG] Running validation at step {current_step}")
             # Esegui manualmente la validazione
             pl_module.eval()
-            val_dataloader = trainer.datamodule.val_dataloader()
             val_class_loss = 0.0
             correct = 0
             total = 0
             with torch.no_grad():
-                for batch in val_dataloader:
+                for batch in trainer.val_dataloaders[0]:
                     sample_embeddings, habitat, labels = batch
                     sample_embeddings, habitat, labels = sample_embeddings.to(pl_module.device), habitat.to(pl_module.device), labels.to(pl_module.device)
                     outputs = pl_module(sample_embeddings, habitat)
@@ -166,7 +177,7 @@ class ValidationOnStepCallback(pl.Callback):
                     _, preds = torch.max(outputs, 1)
                     correct += (preds == labels).sum().item()
                     total += labels.size(0)
-            val_class_loss /= len(val_dataloader)
+            val_class_loss /= len(trainer.val_dataloaders[0])
             val_accuracy = correct / total
             print(f"[DEBUG] Validation at step {current_step}: val_class_loss = {val_class_loss}, val_accuracy = {val_accuracy}")
             pl_module.train()
