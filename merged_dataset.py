@@ -16,11 +16,14 @@ class MergedDataset(Dataset):
         # One-hot encode habitat
         self.data = pd.get_dummies(self.data, columns=['habitat'], prefix='', prefix_sep='')
 
-        # Extract embeddings
-        self.embeddings = self.data.iloc[:, 1:self.data.columns.get_loc('protection')].values
-        # Extract one-hot encoded habitat
+        # Extract embeddings (assumes embeddings are all columns except 'Sample', 'protection' and one-hot encoded habitats)
+        num_emb_cols = len(self.embeddings.columns) - 1  # Minus 'Sample' column
+        self.embeddings = self.data.iloc[:, 1:1 + num_emb_cols].apply(pd.to_numeric, errors='coerce').fillna(0).values
+
+        # Extract one-hot encoded habitat (assumes all one-hot columns are after 'protection')
         habitat_start_index = self.data.columns.get_loc('protection') + 1
-        self.habitats = self.data.iloc[:, habitat_start_index:-1].values
+        self.habitats = self.data.iloc[:, habitat_start_index:].apply(pd.to_numeric, errors='coerce').fillna(0).values
+
         # Extract protection labels
         self.labels = self.data['protection'].values
 
