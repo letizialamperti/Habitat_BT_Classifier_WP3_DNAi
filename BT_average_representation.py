@@ -8,13 +8,13 @@ from IPython.display import display, clear_output
 from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.sequence_mapper import SequenceMapper
 
-MODEL_TYPE = 'barlow_twins'
-CHECKPOINT_PATH = Path('checkpoints/model-epoch=00-val_accuracy=1.00.ckpt')
+
+CHECKPOINT_PATH = Path('checkpoints/BT_sud_cose_1_dataset-epoch=00.ckpt')
 DATASET = 'sud_corse'
 SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/sud_corse')
 SEQUENCE_LENGTH = 300
 SAMPLE_SUBSET_SIZE = 500
-NUM_CLASSES = 2
+NUM_CLASSES = 4
 
 # Carica il modello Barlow Twins
 model = SelfAttentionBarlowTwinsEmbedder.load_from_checkpoint(CHECKPOINT_PATH, num_classes=NUM_CLASSES)
@@ -23,7 +23,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 version = CHECKPOINT_PATH.parents[1].name
-output_folder = "/scratch/snx3000/llampert/plot/"
+output_folder = "/scratch/snx3000/llampert/embedding_coords/"
 os.makedirs(output_folder, exist_ok=True)
 output_csv_file = os.path.join(output_folder, f"embedding_coordinates_{DATASET.lower()}_{version}.csv")
 
