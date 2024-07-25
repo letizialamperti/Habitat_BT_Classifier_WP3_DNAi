@@ -44,7 +44,7 @@ class MergedDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         self.dataset = MergedDataset(self.embeddings_file, self.protection_file, self.habitat_file)
         self.sample_emb_dim = self.dataset.embeddings.shape[1]
-        self.habitat_dim = self.dataset.habitats.shape[1]
+        self.num_habitats = self.dataset.habitats.shape[1]
 
     def train_dataloader(self):
         return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=12)
