@@ -1,7 +1,6 @@
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
-import pytorch_lightning as pl
+from torch.utils.data import Dataset
 
 class MergedDataset(Dataset):
     def __init__(self, embeddings_file: str, protection_file: str, habitat_file: str):
@@ -14,19 +13,16 @@ class MergedDataset(Dataset):
         self.data = pd.merge(self.data, self.habitat, on='spygen_code')
 
         # One-hot encode habitat
-        self.data = pd.get_dummies(self.data, columns=['habitat'], prefix='', prefix_sep='')
+        habitat_one_hot = pd.get_dummies(self.data['habitat'], prefix='', prefix_sep='')
+        self.data = pd.concat([self.data, habitat_one_hot], axis=1)
 
-        # Ensure all columns are numeric
-        self.data = self.data.apply(pd.to_numeric, errors='coerce').fillna(0)
+        # Drop original 'habitat' column and unnecessary columns
+        self.data = self.data.drop(columns=['habitat', 'spygen_code'])
 
-        # Extract embeddings (assumes embeddings are all columns except 'Sample', 'protection' and one-hot encoded habitats)
-        num_emb_cols = len(self.embeddings.columns) - 1  # Minus 'Sample' column
-        self.embeddings = self.data.iloc[:, 1:1 + num_emb_cols].values
-
-        # Extract one-hot encoded habitat (assumes all one-hot columns are after 'protection')
-        habitat_start_index = self.data.columns.get_loc('protection') + 1
-        self.habitats = self.data.iloc[:, habitat_start_index:].values
-
+        # Extract embeddings
+        self.embeddings = self.data.iloc[:, 1:-len(habitat_one_hot.columns)-1].values
+        # Extract one-hot encoded habitat
+        self.habitats = self.data.iloc[:, -len(habitat_one_hot.columns):].values
         # Extract protection labels
         self.labels = self.data['protection'].values
 
