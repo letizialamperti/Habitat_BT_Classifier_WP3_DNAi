@@ -30,7 +30,7 @@ export CUDA_LAUNCH_BLOCKING=1
 srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_Classifier.py \
     --arg_log True \
     --embeddings_file $EMBEDDINGS_FILE \
-    --labels_file $PROTECTION_FILE \
+    --protection_file $PROTECTION_FILE \
     --habitat_file $HABITAT_FILE \
     --num_classes 4 \
     --batch_size 32 \
