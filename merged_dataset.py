@@ -20,7 +20,7 @@ class MergedDataset(Dataset):
         self.embeddings = self.data.iloc[:, 1:self.data.columns.get_loc('protection')].values
         # Extract one-hot encoded habitat
         habitat_start_index = self.data.columns.get_loc('protection') + 1
-        self.habitats = self.data.iloc[:, habitat_start_index:].values
+        self.habitats = self.data.iloc[:, habitat_start_index:-1].values
         # Extract protection labels
         self.labels = self.data['protection'].values
 
@@ -43,9 +43,11 @@ class MergedDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         self.dataset = MergedDataset(self.embeddings_file, self.protection_file, self.habitat_file)
+        self.sample_emb_dim = self.dataset.embeddings.shape[1]
+        self.habitat_dim = self.dataset.habitats.shape[1]
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=12)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=12)
