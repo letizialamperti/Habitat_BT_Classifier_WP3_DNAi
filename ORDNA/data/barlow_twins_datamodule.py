@@ -1,19 +1,11 @@
-import torch
-import os
-import pytorch_lightning as pl
-from torch.utils.data import DataLoader, Subset
-from typing import Optional
-from pathlib import Path
-from ORDNA.data.barlow_twins_dataset import BarlowTwinsDataset
-import numpy as np
-
 class BarlowTwinsDataModule(pl.LightningDataModule):
-    def __init__(self, samples_dir: Path, labels_file: Path, sequence_length: int, sample_subset_size: int, batch_size: int = 8) -> None:
+    def __init__(self, samples_dir: Path, labels_file: Path, habitats_file: Path, sequence_length: int, sample_subset_size: int, batch_size: int = 8) -> None:
         super().__init__()
 
         self.train_samples_dir = samples_dir / "train"
         self.val_samples_dir = samples_dir / "valid"
         self.labels_file = labels_file
+        self.habitats_file = habitats_file
         self.sequence_length = sequence_length
         self.sample_subset_size = sample_subset_size
         self.batch_size = batch_size
@@ -25,6 +17,7 @@ class BarlowTwinsDataModule(pl.LightningDataModule):
             self.train_dataset = BarlowTwinsDataset(
                 samples_dir=self.train_samples_dir,
                 labels_file=self.labels_file,
+                habitats_file=self.habitats_file,
                 sample_subset_size=self.sample_subset_size,
                 sequence_length=self.sequence_length
             )
@@ -32,6 +25,7 @@ class BarlowTwinsDataModule(pl.LightningDataModule):
             self.val_dataset = BarlowTwinsDataset(
                 samples_dir=self.val_samples_dir,
                 labels_file=self.labels_file,
+                habitats_file=self.habitats_file,
                 sample_subset_size=self.sample_subset_size,
                 sequence_length=self.sequence_length
             )
