@@ -108,11 +108,12 @@ def main():
 
     print("Initializing classifier model...")
     sample_emb_dim = datamodule.sample_emb_dim
-    habitat_dim = datamodule.habitat_dim
+    habitat_dim = datamodule.num_habitats  # Usa num_habitats anziché habitat_dim
     class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
     model = Classifier(
-        sample_emb_dim=sample_emb_dim + habitat_dim,  # Pass total input size to classifier
+        sample_emb_dim=sample_emb_dim,  # Usa sample_emb_dim senza habitat_dim
         num_classes=args.num_classes,
+        num_habitats=habitat_dim,  # Passa num_habitats direttamente
         initial_learning_rate=args.initial_learning_rate,
         class_weights=class_weights
     )
