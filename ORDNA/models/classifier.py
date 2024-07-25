@@ -28,7 +28,7 @@ class OrdinalCrossEntropyLoss(nn.Module):
         return loss.mean()
 
 class Classifier(pl.LightningModule):
-    def __init__(self, sample_emb_dim: int, num_classes: int, initial_learning_rate: float = 1e-5, class_weights=None):
+    def __init__(self, sample_emb_dim: int, num_classes: int,num_habitats: int, initial_learning_rate: float = 1e-5, class_weights=None):
         super().__init__()
         self.save_hyperparameters()
         self.num_classes = num_classes
