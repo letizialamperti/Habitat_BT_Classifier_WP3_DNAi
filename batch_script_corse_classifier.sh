@@ -32,15 +32,10 @@ srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_Classifier.py \
     --embeddings_file $EMBEDDINGS_FILE \
     --protection_file $PROTECTION_FILE \
     --habitat_file $HABITAT_FILE \
-    --embedder_type barlow_twins \
-    --sequence_length 300 \
-    --sample_subset_size 500 \
     --num_classes 4 \
     --batch_size 32 \
-    --token_emb_dim 8 \
-    --sample_repr_dim 64 \
-    --sample_emb_dim 64 \
     --initial_learning_rate 1e-3 \
     --max_epochs 2
+
 
 echo "Training completed successfully."
