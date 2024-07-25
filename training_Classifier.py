@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 from pathlib import Path
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 from merged_dataset import MergedDataModule
 from ORDNA.models.classifier import Classifier
 from ORDNA.utils.argparser import get_args, write_config_file
@@ -107,16 +107,15 @@ def main():
     datamodule.setup(stage='fit')
 
     print("Initializing classifier model...")
-    sample_emb_dim = datamodule.dataset.embeddings.shape[1]
-    habitat_dim = datamodule.dataset.habitats.shape[1]
+    sample_emb_dim = datamodule.sample_emb_dim
+    habitat_dim = datamodule.habitat_dim
     class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
     model = Classifier(
-        sample_emb_dim=sample_emb_dim,
+        sample_emb_dim=sample_emb_dim + habitat_dim,  # Pass total input size to classifier
         num_classes=args.num_classes,
         initial_learning_rate=args.initial_learning_rate,
         class_weights=class_weights
     )
-    model.hparams.num_habitats = habitat_dim
 
     print("Setting up checkpoint directory...")
     checkpoint_dir = Path('checkpoints_classifier')
