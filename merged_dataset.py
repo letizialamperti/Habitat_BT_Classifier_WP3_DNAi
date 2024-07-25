@@ -1,6 +1,7 @@
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+import pytorch_lightning as pl
 
 class MergedDataset(Dataset):
     def __init__(self, embeddings_file: str, protection_file: str, habitat_file: str):
@@ -19,7 +20,7 @@ class MergedDataset(Dataset):
         self.embeddings = self.data.iloc[:, 1:self.data.columns.get_loc('protection')].values
         # Extract one-hot encoded habitat
         habitat_start_index = self.data.columns.get_loc('protection') + 1
-        self.habitats = self.data.iloc[:, habitat_start_index:-1].values
+        self.habitats = self.data.iloc[:, habitat_start_index:].values
         # Extract protection labels
         self.labels = self.data['protection'].values
 
@@ -31,3 +32,20 @@ class MergedDataset(Dataset):
         habitat = torch.tensor(self.habitats[idx], dtype=torch.float)
         label = torch.tensor(self.labels[idx], dtype=torch.long)
         return embedding, habitat, label
+
+class MergedDataModule(pl.LightningDataModule):
+    def __init__(self, embeddings_file: str, protection_file: str, habitat_file: str, batch_size: int):
+        super().__init__()
+        self.embeddings_file = embeddings_file
+        self.protection_file = protection_file
+        self.habitat_file = habitat_file
+        self.batch_size = batch_size
+
+    def setup(self, stage: str = None):
+        self.dataset = MergedDataset(self.embeddings_file, self.protection_file, self.habitat_file)
+
+    def train_dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+
+    def val_dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
