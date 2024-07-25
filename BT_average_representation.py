@@ -10,7 +10,7 @@ from ORDNA.utils.sequence_mapper import SequenceMapper
 
 
 
-CHECKPOINT_PATH = Path('checkpoints/model-epoch=00-val_accuracy=1.00.ckpt')  # Percorso del checkpoint
+CHECKPOINT_PATH = Path('checkpoints/BT_sud_cose_1_dataset-epoch=00.ckpt')  # Percorso del checkpoint
 DATASET = 'sud_corse'  # Nome del dataset
 SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/sud_corse')  # Percorso della directory dei campioni
 SEQUENCE_LENGTH = 300  # Lunghezza delle sequenze
