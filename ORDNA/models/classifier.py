@@ -24,7 +24,7 @@ class OrdinalCrossEntropyLoss(nn.Module):
             class_weights = self.class_weights[labels].view(-1, 1).to(labels.device)
             loss = - (one_hot_labels * torch.log(prob) + (1 - one_hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
         else:
-            loss = - (one-hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
+            loss = - (one_hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
         return loss.mean()
 
 class Classifier(pl.LightningModule):
@@ -39,7 +39,7 @@ class Classifier(pl.LightningModule):
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(256, num_classes)
-        ).to(self.device)
+        )
         
         self.class_weights = class_weights.to(self.device) if class_weights is not None else None
         self.loss_fn = OrdinalCrossEntropyLoss(num_classes, self.class_weights)
@@ -59,10 +59,10 @@ class Classifier(pl.LightningModule):
 
     def training_step(self, batch, batch_idx: int) -> torch.Tensor:
         embeddings, habitats, labels = batch
+        embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
         combined_input = torch.cat((embeddings, habitats), dim=1)
 
         output = self(combined_input)
-        labels = labels.to(self.device)
         class_loss = self.loss_fn(output, labels)
         
         self.log('train_class_loss', class_loss)
@@ -81,10 +81,10 @@ class Classifier(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx: int) -> torch.Tensor:
         embeddings, habitats, labels = batch
+        embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
         combined_input = torch.cat((embeddings, habitats), dim=1)
 
         output = self(combined_input)
-        labels = labels.to(self.device)
         class_loss = self.loss_fn(output, labels)
         
         self.log('val_class_loss', class_loss)  # Log without specifying on_step or on_epoch
