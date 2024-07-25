@@ -3,20 +3,46 @@ import pytorch_lightning as pl
 from pathlib import Path
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from ORDNA.data.barlow_twins_datamodule import BarlowTwinsDataModule
 from ORDNA.models.classifier import Classifier
-from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.argparser import get_args, write_config_file
 import wandb
+import pandas as pd
+from sklearn.preprocessing import OneHotEncoder
 
-# Funzione per calcolare i pesi delle classi
-def calculate_class_weights_from_csv(labels_file: Path, num_classes: int) -> torch.Tensor:
-    import pandas as pd
-    labels = pd.read_csv(labels_file)
-    label_counts = labels['protection'].value_counts().sort_index()
-    class_weights = 1.0 / label_counts
-    class_weights = class_weights / class_weights.sum() * num_classes  # Normalize weights
-    return torch.tensor(class_weights.values, dtype=torch.float)
+class MeanRepresentationDataset(torch.utils.data.Dataset):
+    def __init__(self, embeddings_file: Path, protection_file: Path, habitat_file: Path):
+        # Load embeddings
+        self.embeddings_df = pd.read_csv(embeddings_file)
+        
+        # Load protection labels
+        protection_df = pd.read_csv(protection_file)
+        
+        # Load habitat labels
+        habitat_df = pd.read_csv(habitat_file)
+        
+        # Merge all dataframes on 'Sample' or 'spygen_code'
+        self.data = self.embeddings_df.merge(protection_df, left_on='Sample', right_on='spygen_code')
+        self.data = self.data.merge(habitat_df, on='spygen_code')
+        
+        # Extract labels
+        self.labels = self.data['protection'].values
+        
+        # One-hot encode habitat
+        self.habitat_encoder = OneHotEncoder()
+        self.habitat = self.habitat_encoder.fit_transform(self.data[['habitat']]).toarray()
+        
+        # Extract mean embeddings (assuming the mean columns are named 'Dim1', 'Dim2', etc.)
+        embedding_columns = [col for col in self.embeddings_df.columns if col.startswith('Dim')]
+        self.embeddings = self.data[embedding_columns].values
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sample_embedding = torch.tensor(self.embeddings[idx], dtype=torch.float32)
+        habitat = torch.tensor(self.habitat[idx], dtype=torch.float32)
+        label = torch.tensor(self.labels[idx], dtype=torch.long)
+        return sample_embedding, habitat, label
 
 # Controllo se la GPU è disponibile
 if torch.cuda.is_available():
@@ -34,34 +60,28 @@ if args.arg_log:
 print("Setting random seed...")
 pl.seed_everything(args.seed)
 
-samples_dir = Path(args.samples_dir).resolve()
+# Percorsi dei file
+embeddings_file = Path(args.embeddings_file).resolve()
+protection_file = Path(args.protection_file).resolve()
+habitat_file = Path(args.habitat_file).resolve()
 
-print("Initializing data module...")
-datamodule = BarlowTwinsDataModule(samples_dir=samples_dir,
-                                   labels_file=Path(args.labels_file).resolve(), 
-                                   sequence_length=args.sequence_length, 
-                                   sample_subset_size=args.sample_subset_size,
-                                   batch_size=args.batch_size)
+print("Initializing dataset...")
+dataset = MeanRepresentationDataset(embeddings_file=embeddings_file, protection_file=protection_file, habitat_file=habitat_file)
 
-print("Setting up data module...")
-datamodule.setup(stage='fit')  # Ensure train_dataset is defined
+# Suddivisione del dataset in training e validation
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-print("Calculating class weights from CSV...")
-class_weights = calculate_class_weights_from_csv(Path(args.labels_file).resolve(), args.num_classes)
-print(f"Class weights: {class_weights}")
-
-print("Loading Barlow Twins model...")
-# Carica il modello Barlow Twins addestrato
-barlow_twins_model = SelfAttentionBarlowTwinsEmbedder.load_from_checkpoint("checkpoints/BT_sud_cose_1_dataset-epoch=00.ckpt").to(device)
+print("Setting up DataLoaders...")
+train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=12)
+val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=12)
 
 print("Initializing classifier model...")
-# Crea il classificatore con il modello Barlow Twins congelato
-sample_emb_dim = args.sample_emb_dim  # Assicurati che questo sia corretto
-model = Classifier(barlow_twins_model=barlow_twins_model, 
-                   sample_emb_dim=sample_emb_dim, 
-                   num_classes=args.num_classes, 
-                   initial_learning_rate=args.initial_learning_rate,
-                   class_weights=class_weights)
+# Inizializza il modello del classificatore
+sample_emb_dim = dataset.embeddings.shape[1]
+habitat_dim = dataset.habitat.shape[1]
+model = Classifier(sample_emb_dim=sample_emb_dim, habitat_dim=habitat_dim, num_classes=args.num_classes, initial_learning_rate=args.initial_learning_rate)
 
 print("Setting up checkpoint directory...")
 # Checkpoint directory
@@ -71,7 +91,7 @@ checkpoint_dir.mkdir(parents=True, exist_ok=True)
 print("Initializing checkpoint callback...")
 # General checkpoint callback for best model saving
 checkpoint_callback = ModelCheckpoint(
-    monitor='val_accuracy',  # Ensure this metric is logged in your model
+    monitor='val_accuracy',
     dirpath=checkpoint_dir,
     filename='corse_classifier-{epoch:02d}-{val_accuracy:.2f}',
     save_top_k=3,
@@ -139,17 +159,13 @@ class ValidationOnStepCallback(pl.Callback):
             total = 0
             with torch.no_grad():
                 for batch in val_dataloader:
-                    sample_subset1, sample_subset2, labels = batch
-                    sample_subset1, sample_subset2, labels = sample_subset1.to(pl_module.device), sample_subset2.to(pl_module.device), labels.to(pl_module.device)
-                    output1 = pl_module(sample_subset1)
-                    output2 = pl_module(sample_subset2)
-                    val_class_loss += pl_module.loss_fn(output1, labels).item()
-                    val_class_loss += pl_module.loss_fn(output2, labels).item()
-                    _, pred1 = torch.max(output1, 1)
-                    _, pred2 = torch.max(output2, 1)
-                    correct += (pred1 == labels).sum().item()
-                    correct += (pred2 == labels).sum().item()
-                    total += labels.size(0) * 2  # Due predizioni per batch
+                    sample_embeddings, habitat, labels = batch
+                    sample_embeddings, habitat, labels = sample_embeddings.to(pl_module.device), habitat.to(pl_module.device), labels.to(pl_module.device)
+                    outputs = pl_module(sample_embeddings, habitat)
+                    val_class_loss += pl_module.loss_fn(outputs, labels).item()
+                    _, preds = torch.max(outputs, 1)
+                    correct += (preds == labels).sum().item()
+                    total += labels.size(0)
             val_class_loss /= len(val_dataloader)
             val_accuracy = correct / total
             print(f"[DEBUG] Validation at step {current_step}: val_class_loss = {val_class_loss}, val_accuracy = {val_accuracy}")
@@ -169,7 +185,7 @@ print(f"Wandb run URL: {wandb_run.url}")
 print("Initializing trainer...")
 
 # Parametri del dataset e batch size
-N = len(datamodule.train_dataloader().dataset)  # Numero di campioni di addestramento
+N = len(train_dataset)  # Numero di campioni di addestramento
 B = args.batch_size  # Batch size
 
 # Calcolare il numero totale di batch per epoca
@@ -198,7 +214,7 @@ print(f"Trainer callbacks: {trainer.callbacks}")
 
 # Start training
 print("Starting training...")
-trainer.fit(model=model, datamodule=datamodule)
+trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
 
 # Check if early stopping was triggered
 if any(callback.stop_training for callback in trainer.callbacks if isinstance(callback, CustomEarlyStopping)):
