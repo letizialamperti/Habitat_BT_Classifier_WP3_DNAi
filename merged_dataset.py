@@ -41,11 +41,11 @@ class MergedDataModule(pl.LightningDataModule):
         self.habitat_file = habitat_file
         self.batch_size = batch_size
 
-    def setup(self, stage: str = None):
+    def setup(self, stage=None):
         self.dataset = MergedDataset(self.embeddings_file, self.protection_file, self.habitat_file)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
