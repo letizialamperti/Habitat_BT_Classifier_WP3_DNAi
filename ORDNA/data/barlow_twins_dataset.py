@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import List, Tuple
 from torch.utils.data import Dataset
 from ORDNA.utils.sequence_mapper import SequenceMapper
+from sklearn.preprocessing import OneHotEncoder
 
 class BarlowTwinsDataset(Dataset):
-    def __init__(self, samples_dir: Path, labels_file: Path, sample_subset_size: int, sequence_length: int) -> None:
+    def __init__(self, samples_dir: Path, labels_file: Path, habitats_file: Path, sample_subset_size: int, sequence_length: int) -> None:
         self.samples_dir = samples_dir
         self.labels_dict = self.load_labels(labels_file)
+        self.habitats_dict = self.load_habitats(habitats_file)
         self.files = []
         self.accumulated_num_subsets = []
         self.sequence_mapper = SequenceMapper()
@@ -38,10 +40,17 @@ class BarlowTwinsDataset(Dataset):
         labels_df = pd.read_csv(file_path)
         return dict(zip(labels_df['spygen_code'], labels_df['protection']))
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def load_habitats(self, file_path: Path):
+        habitats_df = pd.read_csv(file_path)
+        one_hot_encoder = OneHotEncoder()
+        habitats = one_hot_encoder.fit_transform(habitats_df[['habitat']]).toarray()
+        return dict(zip(habitats_df['spygen_code'], habitats))
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         sample_index = bisect.bisect_left(self.accumulated_num_subsets, index + 1)
         file = self.files[sample_index]
         label = self.labels_dict[file.stem]
+        habitat = self.habitats_dict[file.stem]
 
         if sample_index == 0:
             subset_index = index
@@ -57,7 +66,7 @@ class BarlowTwinsDataset(Dataset):
         sample_subset1 = self._get_tensor_from_df(sample_subset1_df)
         sample_subset2 = self._get_tensor_from_df(sample_subset2_df)
         
-        return sample_subset1, sample_subset2, torch.tensor(label, dtype=torch.long)
+        return sample_subset1, sample_subset2, torch.tensor(label, dtype=torch.long), torch.tensor(habitat, dtype=torch.float)
 
     def _pad_dataframe(self, df: pd.DataFrame, nrows: int) -> pd.DataFrame:
         if len(df) == 0:
