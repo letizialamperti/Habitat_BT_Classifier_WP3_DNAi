@@ -2,9 +2,8 @@ import torch
 import pytorch_lightning as pl
 from pathlib import Path
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 from ORDNA.data.barlow_twins_datamodule import BarlowTwinsDataModule
-from ORDNA.data.habitat_datamodule import HabitatDataModule  # Import the new HabitatDataModule
 from ORDNA.models.classifier import Classifier
 from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.argparser import get_args, write_config_file
@@ -40,13 +39,10 @@ samples_dir = Path(args.samples_dir).resolve()
 print("Initializing data module...")
 datamodule = BarlowTwinsDataModule(samples_dir=samples_dir,
                                    labels_file=Path(args.labels_file).resolve(), 
+                                   habitats_file=Path(args.habitats_file).resolve(),
                                    sequence_length=args.sequence_length, 
                                    sample_subset_size=args.sample_subset_size,
                                    batch_size=args.batch_size)
-
-print("Initializing habitat data module...")
-habitat_datamodule = HabitatDataModule(labels_file=Path(args.labels_file).resolve(), batch_size=args.batch_size)
-habitat_datamodule.setup(stage='fit')
 
 print("Setting up data module...")
 datamodule.setup(stage='fit')  # Ensure train_dataset is defined
@@ -62,11 +58,11 @@ barlow_twins_model = SelfAttentionBarlowTwinsEmbedder.load_from_checkpoint("chec
 print("Initializing classifier model...")
 # Crea il classificatore con il modello Barlow Twins congelato
 sample_emb_dim = args.sample_emb_dim  # Assicurati che questo sia corretto
-habitat_dim = habitat_datamodule.habitats.shape[1]  # Dimensione della codifica one-hot dell'habitat
+habitat_emb_dim = len(pd.read_csv(Path(args.habitats_file)).columns) - 1  # Assuming one-hot encoding of habitat
 model = Classifier(barlow_twins_model=barlow_twins_model, 
                    sample_emb_dim=sample_emb_dim, 
-                   num_classes=args.num_classes,
-                   habitat_dim=habitat_dim,
+                   habitat_emb_dim=habitat_emb_dim,
+                   num_classes=args.num_classes, 
                    initial_learning_rate=args.initial_learning_rate,
                    class_weights=class_weights)
 
