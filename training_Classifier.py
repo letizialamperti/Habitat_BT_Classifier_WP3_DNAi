@@ -4,7 +4,7 @@ from pathlib import Path
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from merged_dataset import MergedDataModule
-from classifier import Classifier
+from ORDNA.models.classifier import Classifier
 from utils.argparser import get_args, write_config_file
 import wandb
 
