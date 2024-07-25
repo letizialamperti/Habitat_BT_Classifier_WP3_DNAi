@@ -9,12 +9,15 @@ from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.sequence_mapper import SequenceMapper
 
 
-CHECKPOINT_PATH = Path('checkpoints/BT_sud_cose_1_dataset-epoch=00.ckpt')
-DATASET = 'sud_corse'
-SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/sud_corse')
-SEQUENCE_LENGTH = 300
-SAMPLE_SUBSET_SIZE = 500
-NUM_CLASSES = 4
+
+CHECKPOINT_PATH = Path('checkpoints/model-epoch=00-val_accuracy=1.00.ckpt')  # Percorso del checkpoint
+DATASET = 'sud_corse'  # Nome del dataset
+SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/sud_corse')  # Percorso della directory dei campioni
+SEQUENCE_LENGTH = 300  # Lunghezza delle sequenze
+SAMPLE_SUBSET_SIZE = 500  # Dimensione del subset del campione
+NUM_CLASSES = 2  # Numero di classi
+repr_dim = 64  # Dimensione della rappresentazione (specificare correttamente)
+
 
 # Carica il modello Barlow Twins
 model = SelfAttentionBarlowTwinsEmbedder.load_from_checkpoint(CHECKPOINT_PATH, num_classes=NUM_CLASSES)
