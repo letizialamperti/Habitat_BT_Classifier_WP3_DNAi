@@ -35,6 +35,7 @@ class ValidationOnStepCallback(pl.Callback):
             with torch.no_grad():
                 for batch in val_dataloader:
                     embeddings, habitats, labels = batch
+                    embeddings, habitats, labels = embeddings.to(pl_module.device), habitats.to(pl_module.device), labels.to(pl_module.device)
                     combined_input = torch.cat((embeddings, habitats), dim=1)
                     output = pl_module(combined_input)
                     val_class_loss += pl_module.loss_fn(output, labels).item()
