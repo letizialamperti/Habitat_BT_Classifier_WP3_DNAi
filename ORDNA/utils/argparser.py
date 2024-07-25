@@ -35,7 +35,7 @@ def get_args() -> argparse.Namespace:
 
     
     # Training control
-    parser.add_argument('--max_epochs', type=int, default=100, help='Maximum number of epochs to train.')
+  
     parser.add_argument('--accelerator', type=str, default='gpu', help='Specify the accelerator device ("gpu" or "cpu").')
 
 
