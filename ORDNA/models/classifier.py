@@ -38,7 +38,7 @@ class Classifier(pl.LightningModule):
         self.num_classes = num_classes
 
         self.classifier = nn.Sequential(
-            nn.Linear(sample_emb_dim + self.hparams.habitat_dim, 256),
+            nn.Linear(sample_emb_dim + habitat_dim, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -65,8 +65,10 @@ class Classifier(pl.LightningModule):
 
     def training_step(self, batch, batch_idx: int) -> torch.Tensor:
         embeddings, habitats, labels = batch
+        print(f"DEBUG - Training step embeddings.shape: {embeddings.shape}, habitats.shape: {habitats.shape}, labels.shape: {labels.shape}")
         embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
         combined_input = torch.cat((embeddings, habitats), dim=1)
+        print(f"DEBUG - Training step combined_input.shape: {combined_input.shape}")
 
         output = self(combined_input)
         class_loss = self.loss_fn(output, labels)
@@ -89,8 +91,10 @@ class Classifier(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx: int):
         embeddings, habitats, labels = batch
+        print(f"DEBUG - Validation step embeddings.shape: {embeddings.shape}, habitats.shape: {habitats.shape}, labels.shape: {labels.shape}")
         embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
         combined_input = torch.cat((embeddings, habitats), dim=1)
+        print(f"DEBUG - Validation step combined_input.shape: {combined_input.shape}")
 
         output = self(combined_input)
         class_loss = self.loss_fn(output, labels)
