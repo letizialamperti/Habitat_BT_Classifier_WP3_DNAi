@@ -20,8 +20,8 @@ source activate diaus_1
 
 # Define dataset and labels path
 EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_sud_corse__.csv"
-PROTECTION_FILE="/store/sdsc/sd29/letizia/label/labels_numeric_binary_MPA_Sud_corse.csv"
-HABITAT_FILE="/store/sdsc/sd29/letizia/habitat/labels_habitat_sud_corse.csv"
+PROTECTION_FILE="label/labels_numeric_binary_MPA_Sud_corse.csv"
+HABITAT_FILE="habitat/labels_habitat_sud_corse.csv"
 
 # Command to run the Python script
 echo "Starting the training process."
