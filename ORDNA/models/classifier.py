@@ -26,7 +26,7 @@ class OrdinalCrossEntropyLoss(nn.Module):
         prob = torch.clamp(prob, min=epsilon, max=1-epsilon)
         if self.class_weights is not None:
             class_weights = self.class_weights[labels].view(-1, 1).to(labels.device)
-            loss = - (one_hot_labels * torch.log(prob) + (1 - one_hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
+            loss = - (one_hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
         else:
             loss = - (one-hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
         return loss.mean()
@@ -69,7 +69,7 @@ class Classifier(pl.LightningModule):
         output = self(combined_input)
         class_loss = self.loss_fn(output, labels)
         
-        self.log('train_class_loss', class_loss)
+        self.log('train_class_loss', class_loss, on_step=True, on_epoch=True)
         pred = torch.argmax(output, dim=1)
         accuracy = self.train_accuracy(pred, labels)
         precision = self.train_precision(pred, labels)
@@ -77,11 +77,11 @@ class Classifier(pl.LightningModule):
         mae = self.train_mae(pred, labels)
         mse = self.train_mse(pred, labels)
         
-        self.log('train_accuracy', accuracy)
-        self.log('train_precision', precision)
-        self.log('train_recall', recall)
-        self.log('train_mae', mae)
-        self.log('train_mse', mse)
+        self.log('train_accuracy', accuracy, on_step=True, on_epoch=True)
+        self.log('train_precision', precision, on_step=True, on_epoch=True)
+        self.log('train_recall', recall, on_step=True, on_epoch=True)
+        self.log('train_mae', mae, on_step=True, on_epoch=True)
+        self.log('train_mse', mse, on_step=True, on_epoch=True)
 
         return class_loss
 
@@ -94,30 +94,33 @@ class Classifier(pl.LightningModule):
         class_loss = self.loss_fn(output, labels)
         
         pred = torch.argmax(output, dim=1)
+        accuracy = self.val_accuracy(pred, labels)
+        precision = self.val_precision(pred, labels)
+        recall = self.val_recall(pred, labels)
+        mae = self.val_mae(pred, labels)
+        mse = self.val_mse(pred, labels)
+        
+        self.log('val_class_loss', class_loss, on_epoch=True)
+        self.log('val_accuracy', accuracy, on_epoch=True)
+        self.log('val_precision', precision, on_epoch=True)
+        self.log('val_recall', recall, on_epoch=True)
+        self.log('val_mae', mae, on_epoch=True)
+        self.log('val_mse', mse, on_epoch=True)
 
         return {'val_class_loss': class_loss, 'pred': pred, 'labels': labels}
 
-    def on_validation_epoch_end(self, outputs):
-        val_loss = torch.stack([x['val_class_loss'] for x in outputs]).mean()
-        preds = torch.cat([x['pred'] for x in outputs])
-        labels = torch.cat([x['labels'] for x in outputs])
-        
-        val_accuracy = self.val_accuracy(preds, labels)
-        val_precision = self.val_precision(preds, labels)
-        val_recall = self.val_recall(preds, labels)
-        val_mae = self.val_mae(preds, labels)
-        val_mse = self.val_mse(preds, labels)
+    def configure_optimizers(self):
+        optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
+        scheduler = {
+            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
+            'monitor': 'val_class_loss'
+        }
+        return [optimizer], [scheduler]
 
-        print(f"Epoch {self.current_epoch} - Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
-        
-        self.log('val_class_loss', val_loss)
-        self.log('val_accuracy', val_accuracy)
-        self.log('val_precision', val_precision)
-        self.log('val_recall', val_recall)
-        self.log('val_mae', val_mae)
-        self.log('val_mse', val_mse)
-
-        # Compute confusion matrix
+    def on_validation_epoch_end(self):
+        outputs = self.trainer.callback_metrics
+        preds = torch.cat([output['pred'] for output in outputs])
+        labels = torch.cat([output['labels'] for output in outputs])
         cm = confusion_matrix(labels.cpu().numpy(), preds.cpu().numpy())
 
         # Plot confusion matrix
@@ -132,11 +135,3 @@ class Classifier(pl.LightningModule):
         wandb_logger.log({"confusion_matrix": wandb.Image(fig)})
 
         plt.close(fig)
-
-    def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
-        scheduler = {
-            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
-            'monitor': 'val_class_loss'
-        }
-        return [optimizer], [scheduler]
