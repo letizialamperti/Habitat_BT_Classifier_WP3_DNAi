@@ -28,7 +28,7 @@ class OrdinalCrossEntropyLoss(nn.Module):
             class_weights = self.class_weights[labels].view(-1, 1).to(labels.device)
             loss = - (one_hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
         else:
-            loss = - (one-hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
+            loss = - (one-hot_labels * torch.log(prob) + (1 - one_hot_labels) * torch.log(1 - prob)).sum(dim=1)
         return loss.mean()
 
 class Classifier(pl.LightningModule):
