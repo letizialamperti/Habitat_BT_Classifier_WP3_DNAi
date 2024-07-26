@@ -24,7 +24,7 @@ class OrdinalCrossEntropyLoss(nn.Module):
             class_weights = self.class_weights[labels].view(-1, 1).to(labels.device)
             loss = - (one_hot_labels * torch.log(prob) + (1 - one_hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
         else:
-            loss = - (one_hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
+            loss = - (one-hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
         return loss.mean()
 
 class Classifier(pl.LightningModule):
@@ -87,26 +87,24 @@ class Classifier(pl.LightningModule):
         output = self(combined_input)
         class_loss = self.loss_fn(output, labels)
         
-        self.log('val_class_loss', class_loss)  # Log without specifying on_step or on_epoch
-        self.log('val_class_loss_step', class_loss)  # Log on step specifically
+        self.log('val_class_loss', class_loss, on_step=False, on_epoch=True)  # Log on epoch
         pred = torch.argmax(output, dim=1)
         accuracy = self.val_accuracy(pred, labels)
-        self.log('val_accuracy', accuracy)
-        self.log('val_accuracy_step', accuracy)  # Log on step specifically
+        self.log('val_accuracy', accuracy, on_step=False, on_epoch=True)  # Log on epoch
         precision = self.val_precision(pred, labels)
-        self.log('val_precision', precision)
+        self.log('val_precision', precision, on_step=False, on_epoch=True)  # Log on epoch
         recall = self.val_recall(pred, labels)
-        self.log('val_recall', recall)
+        self.log('val_recall', recall, on_step=False, on_epoch=True)  # Log on epoch
         mae = self.val_mae(pred, labels)
-        self.log('val_mae', mae)
+        self.log('val_mae', mae, on_step=False, on_epoch=True)  # Log on epoch
         mse = self.val_mse(pred, labels)
-        self.log('val_mse', mse)
+        self.log('val_mse', mse, on_step=False, on_epoch=True)  # Log on epoch
         return class_loss
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
         scheduler = {
             'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
-            'monitor': 'val_class_loss_step'
+            'monitor': 'val_class_loss'
         }
         return [optimizer], [scheduler]
