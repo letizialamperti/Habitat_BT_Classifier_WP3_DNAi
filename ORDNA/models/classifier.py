@@ -3,6 +3,10 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from torch.optim import AdamW
 from torchmetrics import Accuracy, Precision, Recall, MeanAbsoluteError, MeanSquaredError
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+import wandb
 
 class OrdinalCrossEntropyLoss(nn.Module):
     def __init__(self, num_classes, class_weights=None):
@@ -68,18 +72,27 @@ class Classifier(pl.LightningModule):
         self.log('train_class_loss', class_loss)
         pred = torch.argmax(output, dim=1)
         accuracy = self.train_accuracy(pred, labels)
-        self.log('train_accuracy', accuracy)
         precision = self.train_precision(pred, labels)
-        self.log('train_precision', precision)
         recall = self.train_recall(pred, labels)
-        self.log('train_recall', recall)
         mae = self.train_mae(pred, labels)
-        self.log('train_mae', mae)
         mse = self.train_mse(pred, labels)
+        
+        self.log('train_accuracy', accuracy)
+        self.log('train_precision', precision)
+        self.log('train_recall', recall)
+        self.log('train_mae', mae)
         self.log('train_mse', mse)
-        return class_loss
 
-    def validation_step(self, batch, batch_idx: int) -> torch.Tensor:
+        return {'loss': class_loss}
+
+    def training_epoch_end(self, outputs):
+        train_accuracy = self.train_accuracy.compute()
+        train_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        print(f"Epoch {self.current_epoch} - Training Loss: {train_loss:.4f}, Training Accuracy: {train_accuracy:.4f}")
+        self.log('train_accuracy_epoch', train_accuracy)
+        self.log('train_loss_epoch', train_loss)
+
+    def validation_step(self, batch, batch_idx: int):
         embeddings, habitats, labels = batch
         embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
         combined_input = torch.cat((embeddings, habitats), dim=1)
@@ -87,24 +100,51 @@ class Classifier(pl.LightningModule):
         output = self(combined_input)
         class_loss = self.loss_fn(output, labels)
         
-        self.log('val_class_loss', class_loss, on_step=False, on_epoch=True)  # Log on epoch
         pred = torch.argmax(output, dim=1)
         accuracy = self.val_accuracy(pred, labels)
-        self.log('val_accuracy', accuracy, on_step=False, on_epoch=True)  # Log on epoch
         precision = self.val_precision(pred, labels)
-        self.log('val_precision', precision, on_step=False, on_epoch=True)  # Log on epoch
         recall = self.val_recall(pred, labels)
-        self.log('val_recall', recall, on_step=False, on_epoch=True)  # Log on epoch
         mae = self.val_mae(pred, labels)
-        self.log('val_mae', mae, on_step=False, on_epoch=True)  # Log on epoch
         mse = self.val_mse(pred, labels)
-        self.log('val_mse', mse, on_step=False, on_epoch=True)  # Log on epoch
-        return class_loss
+        
+        self.log('val_class_loss', class_loss, on_step=False, on_epoch=True)
+        self.log('val_accuracy', accuracy, on_step=False, on_epoch=True)
+        self.log('val_precision', precision, on_step=False, on_epoch=True)
+        self.log('val_recall', recall, on_step=False, on_epoch=True)
+        self.log('val_mae', mae, on_step=False, on_epoch=True)
+        self.log('val_mse', mse, on_step=False, on_epoch=True)
+
+        return {'val_class_loss': class_loss, 'pred': pred, 'labels': labels}
+
+    def validation_epoch_end(self, outputs):
+        val_accuracy = self.val_accuracy.compute()
+        val_loss = torch.stack([x['val_class_loss'] for x in outputs]).mean()
+        print(f"Epoch {self.current_epoch} - Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
+        self.log('val_accuracy_epoch', val_accuracy)
+        self.log('val_loss_epoch', val_loss)
+
+        # Compute confusion matrix
+        preds = torch.cat([x['pred'] for x in outputs])
+        labels = torch.cat([x['labels'] for x in outputs])
+        cm = confusion_matrix(labels.cpu().numpy(), preds.cpu().numpy())
+
+        # Plot confusion matrix
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+        ax.set_xlabel('Predicted Labels')
+        ax.set_ylabel('True Labels')
+        ax.set_title('Confusion Matrix')
+
+        # Log confusion matrix to Wandb
+        wandb_logger = self.logger.experiment
+        wandb_logger.log({"confusion_matrix": wandb.Image(fig)})
+
+        plt.close(fig)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
         scheduler = {
             'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
-            'monitor': 'val_class_loss'
+            'monitor': 'val_loss_epoch'
         }
         return [optimizer], [scheduler]
