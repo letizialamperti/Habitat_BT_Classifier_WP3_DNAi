@@ -24,12 +24,12 @@ class BinaryCrossEntropyLoss(nn.Module):
         return loss
 
 class BinaryClassifier(pl.LightningModule):
-    def __init__(self, sample_emb_dim: int, initial_learning_rate: float = 1e-5, class_weights=None):
+    def __init__(self, sample_emb_dim: int, habitat_dim: int, initial_learning_rate: float = 1e-5, class_weights=None):
         super().__init__()
         self.save_hyperparameters()
         
         self.classifier = nn.Sequential(
-            nn.Linear(sample_emb_dim, 256),
+            nn.Linear(sample_emb_dim + habitat_dim, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.5),
