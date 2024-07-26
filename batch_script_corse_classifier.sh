@@ -35,6 +35,6 @@ srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_Classifier.py \
     --num_classes 4 \
     --batch_size 10 \
     --initial_learning_rate 1e-3 \
-    --max_epochs 10
+    --max_epochs 30
 
 echo "Training completed successfully."
