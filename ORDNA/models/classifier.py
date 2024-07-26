@@ -57,6 +57,7 @@ class Classifier(pl.LightningModule):
         self.val_mae = MeanAbsoluteError().to(self.device)
         self.train_mse = MeanSquaredError().to(self.device)
         self.val_mse = MeanSquaredError().to(self.device)
+        self.validation_outputs = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.classifier(x)
@@ -85,12 +86,13 @@ class Classifier(pl.LightningModule):
 
         return {'loss': class_loss}
 
-    def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self):
         train_accuracy = self.train_accuracy.compute()
-        train_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        train_loss = self.trainer.callback_metrics['train_class_loss']
         print(f"Epoch {self.current_epoch} - Training Loss: {train_loss:.4f}, Training Accuracy: {train_accuracy:.4f}")
         self.log('train_accuracy_epoch', train_accuracy)
         self.log('train_loss_epoch', train_loss)
+        self.train_accuracy.reset()
 
     def validation_step(self, batch, batch_idx: int):
         embeddings, habitats, labels = batch
@@ -116,16 +118,16 @@ class Classifier(pl.LightningModule):
 
         return {'val_class_loss': class_loss, 'pred': pred, 'labels': labels}
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         val_accuracy = self.val_accuracy.compute()
-        val_loss = torch.stack([x['val_class_loss'] for x in outputs]).mean()
+        val_loss = self.trainer.callback_metrics['val_class_loss']
         print(f"Epoch {self.current_epoch} - Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
         self.log('val_accuracy_epoch', val_accuracy)
         self.log('val_loss_epoch', val_loss)
 
         # Compute confusion matrix
-        preds = torch.cat([x['pred'] for x in outputs])
-        labels = torch.cat([x['labels'] for x in outputs])
+        preds = torch.cat([output['pred'] for output in self.validation_outputs])
+        labels = torch.cat([output['labels'] for output in self.validation_outputs])
         cm = confusion_matrix(labels.cpu().numpy(), preds.cpu().numpy())
 
         # Plot confusion matrix
@@ -140,6 +142,8 @@ class Classifier(pl.LightningModule):
         wandb_logger.log({"confusion_matrix": wandb.Image(fig)})
 
         plt.close(fig)
+        self.validation_outputs.clear()
+        self.val_accuracy.reset()
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
