@@ -36,7 +36,10 @@ def main():
     sample_emb_dim = datamodule.sample_emb_dim  # Dimensione degli embeddings
     habitat_dim = datamodule.num_habitats  # Dimensione della codifica one-hot degli habitat
 
+    print(f"sample_emb_dim: {sample_emb_dim}, habitat_dim: {habitat_dim}")
+
     class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
+    print(f"class_weights: {class_weights}")
 
     model = Classifier(
         sample_emb_dim=sample_emb_dim,
@@ -69,11 +72,12 @@ def main():
         max_epochs=args.max_epochs,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, early_stopping_callback],
-        log_every_n_steps=10
-    )
+        log_every_n_steps=10)
 
     print("Starting training...")
     trainer.fit(model=model, datamodule=datamodule)
+
+    print(f"Early stopping triggered: {trainer.should_stop}")
     wandb.finish()
 
 if __name__ == '__main__':
