@@ -102,9 +102,7 @@ def main():
         max_epochs=args.max_epochs,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, EarlyStopping(monitor='val_accuracy', patience=5, mode='max')],
-        log_every_n_steps=10,
-        enable_progress_bar=True,  # Show progress bar in Wandb logs
-    )
+        log_every_n_steps=10)
 
     # Ensure the callbacks are correctly passed
     print(f"Trainer callbacks: {trainer.callbacks}")
