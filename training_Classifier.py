@@ -65,7 +65,7 @@ def main():
 
     early_stopping_callback = EarlyStopping(
         monitor='val_accuracy',
-        patience=5,
+        patience=3,
         mode='max'
     )
 
