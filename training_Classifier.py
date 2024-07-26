@@ -12,6 +12,7 @@ from pathlib import Path
 # Funzione per calcolare i pesi delle classi
 def calculate_class_weights_from_csv(protection_file: Path, num_classes: int) -> torch.Tensor:
     labels_df = pd.read_csv(protection_file)
+    print(f"DEBUG - protection_file content:\n{labels_df.head()}")
     label_counts = labels_df['protection'].value_counts().sort_index()
     class_weights = 1.0 / label_counts
     class_weights = class_weights / class_weights.sum() * num_classes  # Normalize weights
@@ -25,6 +26,14 @@ def main():
     print(f"[rank: {0}] Seed set to {args.seed}")
     pl.seed_everything(args.seed)
 
+    print("DEBUG - Reading CSV files...")
+    embeddings_df = pd.read_csv(args.embeddings_file)
+    protection_df = pd.read_csv(args.protection_file)
+    habitat_df = pd.read_csv(args.habitat_file)
+    print(f"DEBUG - embeddings_file content:\n{embeddings_df.head()}")
+    print(f"DEBUG - protection_file content:\n{protection_df.head()}")
+    print(f"DEBUG - habitat_file content:\n{habitat_df.head()}")
+
     datamodule = MergedDataModule(
         embeddings_file=args.embeddings_file,
         protection_file=args.protection_file,
@@ -33,18 +42,15 @@ def main():
     )
     datamodule.setup()
 
-    sample_emb_dim = datamodule.sample_emb_dim  # Dimensione degli embeddings
-    habitat_dim = datamodule.num_habitats  # Dimensione della codifica one-hot degli habitat
-
-    print(f"sample_emb_dim: {sample_emb_dim}, habitat_dim: {habitat_dim}")
+    print(f"DEBUG - sample_emb_dim: {datamodule.sample_emb_dim}, habitat_dim: {datamodule.num_habitats}")
 
     class_weights = calculate_class_weights_from_csv(Path(args.protection_file), args.num_classes)
-    print(f"class_weights: {class_weights}")
+    print(f"DEBUG - class_weights: {class_weights}")
 
     model = Classifier(
-        sample_emb_dim=sample_emb_dim,
+        sample_emb_dim=datamodule.sample_emb_dim,
         num_classes=args.num_classes,
-        habitat_dim=habitat_dim,
+        habitat_dim=datamodule.num_habitats,
         initial_learning_rate=args.initial_learning_rate,
         class_weights=class_weights
     )
@@ -65,7 +71,7 @@ def main():
 
     wandb_logger = WandbLogger(project='ORDNA_Class_july', save_dir="lightning_logs", config=args, log_model=False)
     wandb_run = wandb.init(project='ORDNA_Class_july', config=args)
-    print(f"Wandb run URL: {wandb_run.url}")
+    print(f"DEBUG - Wandb run URL: {wandb_run.url}")
 
     trainer = pl.Trainer(
         accelerator=args.accelerator,
@@ -77,7 +83,7 @@ def main():
     print("Starting training...")
     trainer.fit(model=model, datamodule=datamodule)
 
-    print(f"Early stopping triggered: {trainer.should_stop}")
+    print(f"DEBUG - Early stopping triggered: {trainer.should_stop}")
     wandb.finish()
 
 if __name__ == '__main__':
