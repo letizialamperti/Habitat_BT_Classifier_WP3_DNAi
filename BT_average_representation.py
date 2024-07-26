@@ -30,7 +30,7 @@ model.to(device)
 version = CHECKPOINT_PATH.parents[1].name
 output_folder = "/scratch/snx3000/llampert/embedding_coords/"
 os.makedirs(output_folder, exist_ok=True)
-output_csv_file = os.path.join(output_folder, f"new_embedding_coordinates_{DATASET.lower()}_{version}.csv")
+output_csv_file = os.path.join(output_folder, f"new_embedding_coordinates_{DATASET.lower()}_{version}_.csv")
 
 # Mapper per le sequenze
 sequence_mapper = SequenceMapper()
@@ -63,13 +63,21 @@ with open(output_csv_file, mode='w', newline='') as file:
                 sample_emb = model(input_tensor)  # Get the embeddings
                 sample_emb_coords.append(sample_emb.squeeze().cpu().numpy())
 
-        # Calculate the mean and standard deviation of the embeddings
-        sample_emb_coords = np.array(sample_emb_coords)
-        mean_coords = np.mean(sample_emb_coords, axis=0)
-        std_coords = np.std(sample_emb_coords, axis=0)
+        # Ensure sample_emb_coords is not empty
+        if len(sample_emb_coords) > 0:
+            # Calculate the mean and standard deviation of the embeddings
+            sample_emb_coords = np.array(sample_emb_coords)
+            mean_coords = np.mean(sample_emb_coords, axis=0)
+            std_coords = np.std(sample_emb_coords, axis=0)
+        else:
+            mean_coords = np.zeros(model.hparams.sample_emb_dim)
+            std_coords = np.zeros(model.hparams.sample_emb_dim)
+
+        print(f"DEBUG - mean_coords: {mean_coords}")
+        print(f"DEBUG - std_coords: {std_coords}")
 
         # Write results to CSV
-        writer.writerow([sample_name] + list(mean_coords) + list(std_coords))
+        writer.writerow([sample_name] + mean_coords.tolist() + std_coords.tolist())
         display(f'Processed {i+1}/{num_files} files')
         clear_output(wait=True)
 
