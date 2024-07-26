@@ -26,7 +26,7 @@ class OrdinalCrossEntropyLoss(nn.Module):
         prob = torch.clamp(prob, min=epsilon, max=1-epsilon)
         if self.class_weights is not None:
             class_weights = self.class_weights[labels].view(-1, 1).to(labels.device)
-            loss = - (one_hot_labels * torch.log(prob) + (1 - one_hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
+            loss = - (one_hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1) * class_weights
         else:
             loss = - (one-hot_labels * torch.log(prob) + (1 - one-hot_labels) * torch.log(1 - prob)).sum(dim=1)
         return loss.mean()
@@ -57,6 +57,8 @@ class Classifier(pl.LightningModule):
         self.val_mae = MeanAbsoluteError().to(self.device)
         self.train_mse = MeanSquaredError().to(self.device)
         self.val_mse = MeanSquaredError().to(self.device)
+        self.validation_preds = []
+        self.validation_labels = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.classifier(x)
@@ -100,6 +102,9 @@ class Classifier(pl.LightningModule):
         mae = self.val_mae(pred, labels)
         mse = self.val_mse(pred, labels)
         
+        self.validation_preds.append(pred)
+        self.validation_labels.append(labels)
+
         self.log('val_class_loss', class_loss, on_epoch=True)
         self.log('val_accuracy', accuracy, on_epoch=True)
         self.log('val_precision', precision, on_epoch=True)
@@ -107,20 +112,11 @@ class Classifier(pl.LightningModule):
         self.log('val_mae', mae, on_epoch=True)
         self.log('val_mse', mse, on_epoch=True)
 
-        return {'val_class_loss': class_loss, 'pred': pred, 'labels': labels}
-
-    def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
-        scheduler = {
-            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
-            'monitor': 'val_class_loss'
-        }
-        return [optimizer], [scheduler]
+        return class_loss
 
     def on_validation_epoch_end(self):
-        outputs = self.trainer.callback_metrics
-        preds = torch.cat([output['pred'] for output in outputs])
-        labels = torch.cat([output['labels'] for output in outputs])
+        preds = torch.cat(self.validation_preds)
+        labels = torch.cat(self.validation_labels)
         cm = confusion_matrix(labels.cpu().numpy(), preds.cpu().numpy())
 
         # Plot confusion matrix
@@ -135,3 +131,15 @@ class Classifier(pl.LightningModule):
         wandb_logger.log({"confusion_matrix": wandb.Image(fig)})
 
         plt.close(fig)
+
+        # Clear lists for the next epoch
+        self.validation_preds.clear()
+        self.validation_labels.clear()
+
+    def configure_optimizers(self):
+        optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
+        scheduler = {
+            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
+            'monitor': 'val_class_loss'
+        }
+        return [optimizer], [scheduler]
