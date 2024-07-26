@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torch.optim import AdamW
-from torchmetrics import Accuracy, ConfusionMatrix, Precision, Recall
+from torchmetrics import Accuracy, Precision, Recall, MeanAbsoluteError, MeanSquaredError, ConfusionMatrix
 from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 
 class BinaryCrossEntropyLoss(nn.Module):
@@ -21,12 +21,9 @@ class BinaryCrossEntropyLoss(nn.Module):
         return loss
 
 class BinaryClassifier(pl.LightningModule):
-    def __init__(self, barlow_twins_model: SelfAttentionBarlowTwinsEmbedder, sample_emb_dim: int, initial_learning_rate: float = 1e-5, class_weights=None):
+    def __init__(self, sample_emb_dim: int, initial_learning_rate: float = 1e-5, class_weights=None):
         super().__init__()
-        self.save_hyperparameters(ignore=['barlow_twins_model'])
-        self.barlow_twins_model = barlow_twins_model.eval()
-        for param in self.barlow_twins_model.parameters():
-            param.requires_grad = False
+        self.save_hyperparameters()
         
         self.classifier = nn.Sequential(
             nn.Linear(sample_emb_dim, 256),
@@ -34,62 +31,108 @@ class BinaryClassifier(pl.LightningModule):
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(256, 1)  # Output layer with a single neuron for binary classification
-        ).to(self.device)
+        )
         
         self.class_weights = class_weights.to(self.device) if class_weights is not None else None
         self.loss_fn = BinaryCrossEntropyLoss(self.class_weights)
         self.train_accuracy = Accuracy(task="binary").to(self.device)
         self.val_accuracy = Accuracy(task="binary").to(self.device)
-        self.train_conf_matrix = ConfusionMatrix(task="binary").to(self.device)
-        self.val_conf_matrix = ConfusionMatrix(task="binary").to(self.device)
         self.train_precision = Precision(task="binary").to(self.device)
         self.val_precision = Precision(task="binary").to(self.device)
         self.train_recall = Recall(task="binary").to(self.device)
         self.val_recall = Recall(task="binary").to(self.device)
+        self.train_mae = MeanAbsoluteError().to(self.device)
+        self.val_mae = MeanAbsoluteError().to(self.device)
+        self.train_mse = MeanSquaredError().to(self.device)
+        self.val_mse = MeanSquaredError().to(self.device)
+        self.validation_preds = []
+        self.validation_labels = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        sample_emb = self.barlow_twins_model(x.to(self.device))  # Utilizza l'output completo del modello Barlow Twins
-        return self.classifier(sample_emb)
+        return self.classifier(x)
 
     def training_step(self, batch, batch_idx: int) -> torch.Tensor:
-        sample_subset1, sample_subset2, labels = batch
-        sample_subset1, sample_subset2, labels = sample_subset1.to(self.device), sample_subset2.to(self.device), labels.to(self.device)
-        output1 = self(sample_subset1).view(-1)
-        output2 = self(sample_subset2).view(-1)
-        class_loss = self.loss_fn(output1, labels) + self.loss_fn(output2, labels)
-        self.log('train_class_loss', class_loss)
-        pred1 = torch.sigmoid(output1) > 0.5
-        pred2 = torch.sigmoid(output2) > 0.5
-        combined_preds = torch.cat((pred1, pred2), dim=0)
-        combined_labels = torch.cat((labels, labels), dim=0)
-        accuracy = self.train_accuracy(combined_preds, combined_labels)
-        self.log('train_accuracy', accuracy)
-        precision = self.train_precision(combined_preds, combined_labels)
-        self.log('train_precision', precision)
-        recall = self.train_recall(combined_preds, combined_labels)
-        self.log('train_recall', recall)
+        embeddings, habitats, labels = batch
+        print(f"DEBUG - Training step embeddings.shape: {embeddings.shape}, habitats.shape: {habitats.shape}, labels.shape: {labels.shape}")
+        embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
+        combined_input = torch.cat((embeddings, habitats), dim=1)
+        print(f"DEBUG - Training step combined_input.shape: {combined_input.shape}")
+
+        output = self(combined_input).view(-1)
+        class_loss = self.loss_fn(output, labels)
+        
+        self.log('train_class_loss', class_loss, on_step=True, on_epoch=True)
+        pred = torch.sigmoid(output) > 0.5
+        accuracy = self.train_accuracy(pred, labels)
+        precision = self.train_precision(pred, labels)
+        recall = self.train_recall(pred, labels)
+        mae = self.train_mae(pred, labels)
+        mse = self.train_mse(pred, labels)
+        
+        self.log('train_accuracy', accuracy, on_step=True, on_epoch=True)
+        self.log('train_precision', precision, on_step=True, on_epoch=True)
+        self.log('train_recall', recall, on_step=True, on_epoch=True)
+        self.log('train_mae', mae, on_step=True, on_epoch=True)
+        self.log('train_mse', mse, on_step=True, on_epoch=True)
+
         return class_loss
 
     def validation_step(self, batch, batch_idx: int):
-        sample_subset1, sample_subset2, labels = batch
-        sample_subset1, sample_subset2, labels = sample_subset1.to(self.device), sample_subset2.to(self.device), labels.to(self.device)
-        output1 = self(sample_subset1).view(-1)
-        output2 = self(sample_subset2).view(-1)
-        class_loss = self.loss_fn(output1, labels) + self.loss_fn(output2, labels)
-        self.log('val_class_loss', class_loss)
-        pred1 = torch.sigmoid(output1) > 0.5
-        pred2 = torch.sigmoid(output2) > 0.5
-        combined_preds = torch.cat((pred1, pred2), dim=0)
-        combined_labels = torch.cat((labels, labels), dim=0)
-        accuracy = self.val_accuracy(combined_preds, combined_labels)
-        self.log('val_accuracy', accuracy)
-        precision = self.val_precision(combined_preds, combined_labels)
-        self.log('val_precision', precision)
-        recall = self.val_recall(combined_preds, combined_labels)
-        self.log('val_recall', recall)
+        embeddings, habitats, labels = batch
+        print(f"DEBUG - Validation step embeddings.shape: {embeddings.shape}, habitats.shape: {habitats.shape}, labels.shape: {labels.shape}")
+        embeddings, habitats, labels = embeddings.to(self.device), habitats.to(self.device), labels.to(self.device)
+        combined_input = torch.cat((embeddings, habitats), dim=1)
+        print(f"DEBUG - Validation step combined_input.shape: {combined_input.shape}")
+
+        output = self(combined_input).view(-1)
+        class_loss = self.loss_fn(output, labels)
+        
+        pred = torch.sigmoid(output) > 0.5
+        accuracy = self.val_accuracy(pred, labels)
+        precision = self.val_precision(pred, labels)
+        recall = self.val_recall(pred, labels)
+        mae = self.val_mae(pred, labels)
+        mse = self.val_mse(pred, labels)
+        
+        self.validation_preds.append(pred)
+        self.validation_labels.append(labels)
+
+        self.log('val_class_loss', class_loss, on_epoch=True)
+        self.log('val_accuracy', accuracy, on_epoch=True)
+        self.log('val_precision', precision, on_epoch=True)
+        self.log('val_recall', recall, on_epoch=True)
+        self.log('val_mae', mae, on_epoch=True)
+        self.log('val_mse', mse, on_epoch=True)
+
         return class_loss
+
+    def on_validation_epoch_end(self):
+        preds = torch.cat(self.validation_preds)
+        labels = torch.cat(self.validation_labels)
+        cm = ConfusionMatrix(task="binary").to(self.device)
+        cm = cm(preds, labels)
+        
+        # Plot confusion matrix
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(cm.cpu().numpy(), annot=True, fmt='d', cmap='Blues', ax=ax)
+        ax.set_xlabel('Predicted Labels')
+        ax.set_ylabel('True Labels')
+        ax.set_title('Confusion Matrix')
+
+        # Log confusion matrix to Wandb
+        wandb_logger = self.logger.experiment
+        wandb_logger.log({"confusion_matrix": wandb.Image(fig)})
+
+        plt.close(fig)
+
+        # Clear lists for the next epoch
+        self.validation_preds.clear()
+        self.validation_labels.clear()
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.initial_learning_rate, total_steps=self.trainer.estimated_stepping_batches)
+        scheduler = {
+            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
+            'monitor': 'val_class_loss'
+        }
         return [optimizer], [scheduler]
