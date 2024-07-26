@@ -19,9 +19,9 @@ module load cray-python
 source activate diaus_1
 
 # Define dataset and labels path
-EMBEDDINGS_FILE="/path/to/embedding_coordinates_sud_corse_version.csv"
-LABELS_FILE="label/ordinal_label_Sud_Corse.csv"
-HABITAT_FILE="habitat/labels_habitat_sud_corse.csv"
+EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_dataset_460__.csv"
+PROTECTION_FILE="label/labels_5_levels.csv"
+HABITAT_FILE="habitat/label_habitat_460.csv"
 
 # Command to run the Python script
 echo "Starting the training process."
@@ -30,13 +30,10 @@ export CUDA_LAUNCH_BLOCKING=1
 srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_Classifier.py \
     --arg_log True \
     --embeddings_file $EMBEDDINGS_FILE \
-    --labels_file $LABELS_FILE \
-    --habitats_file $HABITAT_FILE \
-    --sequence_length 300 \
-    --num_classes 4 \
-    --batch_size 32 \
-    --sample_emb_dim 64 \
-    --habitat_emb_dim 3 \
+    --protection_file $PROTECTION_FILE \
+    --habitat_file $HABITAT_FILE \
+    --num_classes 5 \
+    --batch_size 10 \
     --initial_learning_rate 1e-3 \
     --max_epochs 50
 
