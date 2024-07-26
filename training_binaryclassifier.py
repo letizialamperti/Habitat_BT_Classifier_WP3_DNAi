@@ -49,6 +49,7 @@ def main():
 
     model = BinaryClassifier(
         sample_emb_dim=datamodule.sample_emb_dim,
+        habitat_dim=datamodule.num_habitats,
         initial_learning_rate=args.initial_learning_rate,
         class_weights=class_weights
     )
