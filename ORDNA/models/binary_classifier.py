@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torch.optim import AdamW
-from torchmetrics import Accuracy, Precision, Recall, MeanAbsoluteError, MeanSquaredError, ConfusionMatrix
+from torchmetrics import Accuracy, Precision, Recall, ConfusionMatrix
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -44,10 +44,6 @@ class BinaryClassifier(pl.LightningModule):
         self.val_precision = Precision(task="binary").to(self.device)
         self.train_recall = Recall(task="binary").to(self.device)
         self.val_recall = Recall(task="binary").to(self.device)
-        self.train_mae = MeanAbsoluteError().to(self.device)
-        self.val_mae = MeanAbsoluteError().to(self.device)
-        self.train_mse = MeanSquaredError().to(self.device)
-        self.val_mse = MeanSquaredError().to(self.device)
         self.validation_preds = []
         self.validation_labels = []
 
@@ -69,14 +65,10 @@ class BinaryClassifier(pl.LightningModule):
         accuracy = self.train_accuracy(pred, labels)
         precision = self.train_precision(pred, labels)
         recall = self.train_recall(pred, labels)
-        mae = self.train_mae(pred, labels)
-        mse = self.train_mse(pred, labels)
         
         self.log('train_accuracy', accuracy, on_step=True, on_epoch=True)
         self.log('train_precision', precision, on_step=True, on_epoch=True)
         self.log('train_recall', recall, on_step=True, on_epoch=True)
-        self.log('train_mae', mae, on_step=True, on_epoch=True)
-        self.log('train_mse', mse, on_step=True, on_epoch=True)
 
         return class_loss
 
@@ -94,8 +86,6 @@ class BinaryClassifier(pl.LightningModule):
         accuracy = self.val_accuracy(pred, labels)
         precision = self.val_precision(pred, labels)
         recall = self.val_recall(pred, labels)
-        mae = self.val_mae(pred, labels)
-        mse = self.val_mse(pred, labels)
         
         self.validation_preds.append(pred)
         self.validation_labels.append(labels)
@@ -104,8 +94,6 @@ class BinaryClassifier(pl.LightningModule):
         self.log('val_accuracy', accuracy, on_epoch=True)
         self.log('val_precision', precision, on_epoch=True)
         self.log('val_recall', recall, on_epoch=True)
-        self.log('val_mae', mae, on_epoch=True)
-        self.log('val_mse', mse, on_epoch=True)
 
         return class_loss
 
