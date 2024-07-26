@@ -26,7 +26,7 @@ HABITAT_FILE="/store/sdsc/sd29/letizia/habitat/labels_habitat_sud_corse.csv"
 # Command to run the Python script
 echo "Starting the training process."
 export CUDA_LAUNCH_BLOCKING=1
-srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_binary_classifier.py \
+srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_binaryclassifier.py \
     --arg_log True \
     --embeddings_file $EMBEDDINGS_FILE \
     --protection_file $PROTECTION_FILE \
