@@ -72,7 +72,10 @@ def main():
         max_epochs=args.max_epochs,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, early_stopping_callback],
-        log_every_n_steps=10)
+        log_every_n_steps=10,
+        log_graph=True,  # Log model graph
+        enable_progress_bar=True,  # Show progress bar in Wandb logs
+    )
 
     print("Starting training...")
     trainer.fit(model=model, datamodule=datamodule)
