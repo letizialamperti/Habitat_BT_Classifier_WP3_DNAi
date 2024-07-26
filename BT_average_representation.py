@@ -9,12 +9,12 @@ from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.sequence_mapper import SequenceMapper
 
 MODEL_TYPE = 'barlow_twins'  # Alternativa: 'triplets'
-CHECKPOINT_PATH = Path('checkpoints/BT_sud_cose_1_dataset-epoch=00.ckpt')
-DATASET = 'sud_corse'
-SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/sud_corse')
+CHECKPOINT_PATH = Path('checkpoints/BT_bid_dataset-epoch=00.ckpt')
+DATASET = 'dataset_460'
+SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/dataset_5_levels_460')
 SEQUENCE_LENGTH = 300
 SAMPLE_SUBSET_SIZE = 500
-NUM_CLASSES = 4  # Adjust this based on the number of classes in your classifier
+NUM_CLASSES = 5  # Adjust this based on the number of classes in your classifier
 
 # Caricamento del modello
 if MODEL_TYPE == 'barlow_twins':
@@ -30,7 +30,7 @@ model.to(device)
 version = CHECKPOINT_PATH.parents[1].name
 output_folder = "/scratch/snx3000/llampert/embedding_coords/"
 os.makedirs(output_folder, exist_ok=True)
-output_csv_file = os.path.join(output_folder, f"new_embedding_coordinates_{DATASET.lower()}_{version}_.csv")
+output_csv_file = os.path.join(output_folder, f"new_embedding_coordinates_{DATASET.lower()}_{version}.csv")
 
 # Mapper per le sequenze
 sequence_mapper = SequenceMapper()
