@@ -57,7 +57,6 @@ class Classifier(pl.LightningModule):
         self.val_mae = MeanAbsoluteError().to(self.device)
         self.train_mse = MeanSquaredError().to(self.device)
         self.val_mse = MeanSquaredError().to(self.device)
-        self.validation_outputs = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.classifier(x)
@@ -84,15 +83,7 @@ class Classifier(pl.LightningModule):
         self.log('train_mae', mae)
         self.log('train_mse', mse)
 
-        return {'loss': class_loss}
-
-    def on_train_epoch_end(self):
-        train_accuracy = self.train_accuracy.compute()
-        train_loss = self.trainer.callback_metrics['train_class_loss']
-        print(f"Epoch {self.current_epoch} - Training Loss: {train_loss:.4f}, Training Accuracy: {train_accuracy:.4f}")
-        self.log('train_accuracy_epoch', train_accuracy)
-        self.log('train_loss_epoch', train_loss)
-        self.train_accuracy.reset()
+        return class_loss
 
     def validation_step(self, batch, batch_idx: int):
         embeddings, habitats, labels = batch
@@ -103,31 +94,30 @@ class Classifier(pl.LightningModule):
         class_loss = self.loss_fn(output, labels)
         
         pred = torch.argmax(output, dim=1)
-        accuracy = self.val_accuracy(pred, labels)
-        precision = self.val_precision(pred, labels)
-        recall = self.val_recall(pred, labels)
-        mae = self.val_mae(pred, labels)
-        mse = self.val_mse(pred, labels)
-        
-        self.log('val_class_loss', class_loss, on_step=False, on_epoch=True)
-        self.log('val_accuracy', accuracy, on_step=False, on_epoch=True)
-        self.log('val_precision', precision, on_step=False, on_epoch=True)
-        self.log('val_recall', recall, on_step=False, on_epoch=True)
-        self.log('val_mae', mae, on_step=False, on_epoch=True)
-        self.log('val_mse', mse, on_step=False, on_epoch=True)
 
         return {'val_class_loss': class_loss, 'pred': pred, 'labels': labels}
 
-    def on_validation_epoch_end(self):
-        val_accuracy = self.val_accuracy.compute()
-        val_loss = self.trainer.callback_metrics['val_class_loss']
+    def on_validation_epoch_end(self, outputs):
+        val_loss = torch.stack([x['val_class_loss'] for x in outputs]).mean()
+        preds = torch.cat([x['pred'] for x in outputs])
+        labels = torch.cat([x['labels'] for x in outputs])
+        
+        val_accuracy = self.val_accuracy(preds, labels)
+        val_precision = self.val_precision(preds, labels)
+        val_recall = self.val_recall(preds, labels)
+        val_mae = self.val_mae(preds, labels)
+        val_mse = self.val_mse(preds, labels)
+
         print(f"Epoch {self.current_epoch} - Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
-        self.log('val_accuracy_epoch', val_accuracy)
-        self.log('val_loss_epoch', val_loss)
+        
+        self.log('val_class_loss', val_loss)
+        self.log('val_accuracy', val_accuracy)
+        self.log('val_precision', val_precision)
+        self.log('val_recall', val_recall)
+        self.log('val_mae', val_mae)
+        self.log('val_mse', val_mse)
 
         # Compute confusion matrix
-        preds = torch.cat([output['pred'] for output in self.validation_outputs])
-        labels = torch.cat([output['labels'] for output in self.validation_outputs])
         cm = confusion_matrix(labels.cpu().numpy(), preds.cpu().numpy())
 
         # Plot confusion matrix
@@ -142,13 +132,11 @@ class Classifier(pl.LightningModule):
         wandb_logger.log({"confusion_matrix": wandb.Image(fig)})
 
         plt.close(fig)
-        self.validation_outputs.clear()
-        self.val_accuracy.reset()
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.initial_learning_rate, weight_decay=1e-4)
         scheduler = {
             'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True),
-            'monitor': 'val_loss_epoch'
+            'monitor': 'val_class_loss'
         }
         return [optimizer], [scheduler]
