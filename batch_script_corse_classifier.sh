@@ -21,7 +21,7 @@ source activate diaus_1
 # Define dataset and labels path
 EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_sud_corse__.csv"
 PROTECTION_FILE="label/ordinal_label_Sud_Corse.csv"
-HABITAT_FILE="habitat/empty_labels_habitat_sud_corse.csv"
+HABITAT_FILE="habitat/labels_habitat_sud_corse.csv"
 
 # Command to run the Python script
 echo "Starting the training process."
@@ -33,7 +33,7 @@ srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_Classifier.py \
     --protection_file $PROTECTION_FILE \
     --habitat_file $HABITAT_FILE \
     --num_classes 4 \
-    --batch_size 10 \
+    --batch_size 32 \
     --initial_learning_rate 1e-3 \
     --max_epochs 50
 
