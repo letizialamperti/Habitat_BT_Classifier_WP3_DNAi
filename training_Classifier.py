@@ -56,17 +56,17 @@ def main():
     )
 
     checkpoint_callback = ModelCheckpoint(
-        monitor='val_accuracy',
+        monitor='val_class_loss',
         dirpath='checkpoints_classifier',
         filename='classifier-{epoch:02d}-{val_accuracy:.2f}',
         save_top_k=3,
-        mode='max',
+        mode='min',
     )
 
     early_stopping_callback = EarlyStopping(
-        monitor='val_accuracy',
+        monitor='val_class_loss',
         patience=3,
-        mode='max'
+        mode='min'
     )
 
     wandb_logger = WandbLogger(project='ORDNA_Class_july', save_dir="lightning_logs", config=args, log_model=False)
