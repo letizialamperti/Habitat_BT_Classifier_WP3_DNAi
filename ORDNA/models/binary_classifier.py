@@ -3,7 +3,10 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from torch.optim import AdamW
 from torchmetrics import Accuracy, Precision, Recall, MeanAbsoluteError, MeanSquaredError, ConfusionMatrix
-from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+import wandb
 
 class BinaryCrossEntropyLoss(nn.Module):
     def __init__(self, class_weights=None):
@@ -109,12 +112,11 @@ class BinaryClassifier(pl.LightningModule):
     def on_validation_epoch_end(self):
         preds = torch.cat(self.validation_preds)
         labels = torch.cat(self.validation_labels)
-        cm = ConfusionMatrix(task="binary").to(self.device)
-        cm = cm(preds, labels)
+        cm = confusion_matrix(labels.cpu().numpy(), preds.cpu().numpy())
         
         # Plot confusion matrix
         fig, ax = plt.subplots(figsize=(8, 6))
-        sns.heatmap(cm.cpu().numpy(), annot=True, fmt='d', cmap='Blues', ax=ax)
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
         ax.set_xlabel('Predicted Labels')
         ax.set_ylabel('True Labels')
         ax.set_title('Confusion Matrix')
