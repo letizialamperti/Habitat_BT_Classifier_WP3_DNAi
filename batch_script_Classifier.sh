@@ -19,7 +19,7 @@ module load cray-python
 source activate diaus_1
 
 # Define dataset and labels path
-EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_dataset_460__.csv"
+EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_dataset_460_new__.csv"
 PROTECTION_FILE="label/labels_5_levels.csv"
 HABITAT_FILE="habitat/empty_label_habitat_460.csv"
 
