@@ -1,5 +1,3 @@
-
-
 #!/bin/bash -l
 
 # SLURM SBATCH Directives
