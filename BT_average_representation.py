@@ -10,7 +10,7 @@ from ORDNA.utils.sequence_mapper import SequenceMapper
 
 MODEL_TYPE = 'barlow_twins'  # Alternativa: 'triplets'
 CHECKPOINT_PATH = Path('checkpoints/BT_460_dataset-epoch=00.ckpt')
-DATASET = 'dataset_460'
+DATASET = 'dataset_460_new'
 SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/dataset_5_levels_460')
 SEQUENCE_LENGTH = 300
 SAMPLE_SUBSET_SIZE = 500
