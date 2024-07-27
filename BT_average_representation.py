@@ -9,7 +9,7 @@ from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.sequence_mapper import SequenceMapper
 
 MODEL_TYPE = 'barlow_twins'  # Alternativa: 'triplets'
-CHECKPOINT_PATH = Path('checkpoints/BT_bid_dataset-epoch=00.ckpt')
+CHECKPOINT_PATH = Path('checkpoints/BT_460_dataset-epoch=00.ckpt')
 DATASET = 'dataset_460'
 SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/dataset_5_levels_460')
 SEQUENCE_LENGTH = 300
