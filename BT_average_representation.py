@@ -9,9 +9,9 @@ from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.sequence_mapper import SequenceMapper
 
 MODEL_TYPE = 'barlow_twins'  # Alternativa: 'triplets'
-CHECKPOINT_PATH = Path('checkpoints/BT_460_dataset-epoch=00.ckpt')
-DATASET = 'dataset_460_new'
-SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/dataset_5_levels_460')
+CHECKPOINT_PATH = Path('checkpoints/BT_Corse_342_dataset-epoch=00.ckpt')
+DATASET = 'dataset_corse_342'
+SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/corse')
 SEQUENCE_LENGTH = 300
 SAMPLE_SUBSET_SIZE = 500
 NUM_CLASSES = 5  # Adjust this based on the number of classes in your classifier
