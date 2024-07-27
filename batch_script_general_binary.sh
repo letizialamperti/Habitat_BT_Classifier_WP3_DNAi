@@ -19,9 +19,9 @@ module load cray-python
 source activate diaus_1
 
 # Define dataset and labels path
-EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_sud_corse__.csv"
+EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_dataset_460_new__.csv"
 PROTECTION_FILE="label/general_labels_numeric_binary.csv"
-HABITAT_FILE="habitat/labels_habitat_sud_corse.csv"
+HABITAT_FILE="habitat/label_habitat_460.csv"
 
 # Command to run the Python script
 echo "Starting the training process."
