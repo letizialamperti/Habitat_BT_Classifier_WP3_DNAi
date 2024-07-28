@@ -39,3 +39,4 @@ srun -ul $HOME/miniconda3/envs/diaus_1/bin/python training_binaryclassifier.py \
     --accelerator gpu
 
 echo "Training completed successfully."
+
