@@ -9,8 +9,8 @@ from ORDNA.models.barlow_twins import SelfAttentionBarlowTwinsEmbedder
 from ORDNA.utils.sequence_mapper import SequenceMapper
 
 MODEL_TYPE = 'barlow_twins'  # Alternativa: 'triplets'
-CHECKPOINT_PATH = Path('checkpoints/BT_cote_france_dataset-epoch=00.ckpt')
-DATASET = 'dataset_cote_france'
+CHECKPOINT_PATH = Path('checkpoints/BT_cote_france_2D_dataset-epoch=00.ckpt')
+DATASET = 'dataset_cote_france_2D'
 SAMPLE_DIR = Path(f'/store/sdsc/sd29/letizia/cote_france')
 SEQUENCE_LENGTH = 300
 SAMPLE_SUBSET_SIZE = 500
