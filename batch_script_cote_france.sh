@@ -21,7 +21,7 @@ source activate diaus_1
 # Define dataset and labels path
 EMBEDDINGS_FILE="/scratch/snx3000/llampert/embedding_coords/new_embedding_coordinates_dataset_cote_france__.csv"
 PROTECTION_FILE="label/labels_5_cote_france.csv"
-HABITAT_FILE="habitat/habitat_cote_france.csv"
+HABITAT_FILE="habitat/empty_habitat_cote_france.csv"
 
 # Command to run the Python script
 echo "Starting the training process."
